@@ -166,22 +166,18 @@ def test_no_arguments_opens_the_window(monkeypatch):
     suite, and CI with it, the moment this behaviour landed.
     """
     opened = []
+    monkeypatch.setattr(cli, "window_available", lambda: True)
     monkeypatch.setattr(cli, "review", lambda argv: opened.append(argv) or 0)
     assert cli.main([]) == 0
     assert opened == [[]]
 
 
 def test_no_arguments_without_the_window_explains_rather_than_hangs(monkeypatch, capsys):
-    import builtins
-
-    real = builtins.__import__
-
-    def refuse(name, *a, **k):
-        if name == "streamlit":
-            raise ImportError("absent")
-        return real(name, *a, **k)
-
-    monkeypatch.setattr(builtins, "__import__", refuse)
+    """
+    Both branches are asserted, and neither asks the machine it is running on
+    — the first version of these did, so they passed here and failed on CI.
+    """
+    monkeypatch.setattr(cli, "window_available", lambda: False)
     assert cli.main([]) == 1
     message = capsys.readouterr().err
     assert "crossfoot[ui]" in message

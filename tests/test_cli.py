@@ -171,6 +171,7 @@ def test_no_arguments_opens_the_window_rather_than_printing_usage(monkeypatch):
     is right for a person and is what hung the whole test suite, and would have
     hung CI, the moment this behaviour landed.
     """
+    monkeypatch.setattr(cli, "window_available", lambda: True)
     monkeypatch.setattr(cli, "review", lambda argv: 0)
     assert cli.main([]) == 0
     assert cli.main(["--help"]) == 0

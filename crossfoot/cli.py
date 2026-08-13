@@ -217,14 +217,29 @@ def main(argv=None) -> int:
     # for, a page of usage text *is* the failure -- they came to look at their
     # receipts, not to learn a flag. Anyone who wanted the command line typed a
     # subcommand and never reaches here.
-    try:
-        import streamlit                    # noqa: F401
-    except ImportError:
+    if not window_available():
         print("Crossfoot needs one more piece to open its window:\n"
               "    pip install 'crossfoot[ui]'\n\n"
               "Or use it from the command line:\n" + _usage(), file=sys.stderr)
         return 1
     return review(argv)
+
+
+def window_available() -> bool:
+    """
+    Whether the window can be opened at all.
+
+    A function rather than an inline import so a test can say which case it is
+    testing. The first version asked the environment, so the "opens the window"
+    tests passed on my machine, where Streamlit is installed, and failed on CI,
+    where it is not -- measuring the runner instead of the behaviour, which is
+    the same mistake this project's sister repo had to fix in its conftest.
+    """
+    try:
+        import streamlit                    # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def _usage() -> str:
