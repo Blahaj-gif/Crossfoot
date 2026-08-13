@@ -161,7 +161,7 @@ def _boxes_by_line(ocr_lines):
     return boxes
 
 
-def extract(text: str, ocr_lines=None) -> dict:
+def extract(text: str, ocr_lines=None, degraded: bool = False) -> dict:
     """
     A receipt's fields, each with its confidence and the line it came from.
 
@@ -173,6 +173,16 @@ def extract(text: str, ocr_lines=None) -> dict:
     photograph. Passing it attaches a rectangle to every field, which is the
     difference between telling somebody a total is doubtful and showing them
     the paper it was read from.
+
+    `degraded` says the engine could not make the photograph out. Every field
+    then comes back untrusted, so the receipt is *unchecked* rather than mined
+    for whichever numbers happened to survive.
+
+    Measured, on the corpus put through a full phone-photograph simulation:
+    reading a bad photograph anyway produced receipts that were wrong **and
+    reconciled**, because a confident label sat over digits the engine had
+    barely resolved. Squeezing accuracy out of a bad photograph is the wrong
+    lever. Saying the photograph is bad is true, actionable and free.
     """
     lines = [l.rstrip() for l in (text or "").splitlines()]
     boxes = _boxes_by_line(ocr_lines)
@@ -195,13 +205,18 @@ def extract(text: str, ocr_lines=None) -> dict:
             # last is the one that was charged.
             if label != "total":
                 continue
-        fields[label] = Field(value, LABELLED, number, line, "labelled",
-                              box=boxes.get(number))
+        fields[label] = Field(
+            value, GUESSED if degraded else LABELLED, number, line,
+            "the engine could not read this photograph clearly" if degraded
+            else "labelled",
+            box=boxes.get(number))
         if label == "subtotal":
             subtotal_at = number
 
     if "total" not in fields:
         fields["total"] = _infer_total(lines, boxes)
+        if degraded:
+            fields["total"].confidence = min(fields["total"].confidence, GUESSED)
 
     return {
         "fields": fields,

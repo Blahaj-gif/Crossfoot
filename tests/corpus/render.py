@@ -113,3 +113,135 @@ def as_png_bytes(image) -> bytes:
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+# --------------------------------------------------------------------------
+# Closer to a photograph
+# --------------------------------------------------------------------------
+#
+# Everything above is a scanner's idea of damage: uniform, in-plane, evenly
+# applied. A phone photograph is none of those things, and the difference is
+# not cosmetic -- perspective alone is what separates "a picture of a document"
+# from "a document".
+
+def _perspective_coefficients(source, target):
+    """
+    The eight coefficients Pillow's PERSPECTIVE transform wants.
+
+    Solved rather than guessed. The first version of this used QUAD with
+    hand-assembled corner data, which did not tilt the image, it scrambled it:
+    the OCR output was punctuation soup and the ink fraction went *up*, which a
+    geometric warp cannot do. It scored 1 of 22 and was measuring the test
+    helper rather than the tool -- the precise failure this whole corpus exists
+    to avoid, committed inside the corpus.
+
+    Eight unknowns, eight equations, plain Gaussian elimination. No numpy: this
+    project has no required dependencies and a test helper is not the place to
+    acquire one.
+    """
+    matrix = []
+    for (sx, sy), (tx, ty) in zip(source, target):
+        matrix.append([tx, ty, 1, 0, 0, 0, -sx * tx, -sx * ty])
+        matrix.append([0, 0, 0, tx, ty, 1, -sy * tx, -sy * ty])
+    vector = [c for corner in source for c in corner]
+
+    size = 8
+    for column in range(size):
+        pivot = max(range(column, size), key=lambda r: abs(matrix[r][column]))
+        matrix[column], matrix[pivot] = matrix[pivot], matrix[column]
+        vector[column], vector[pivot] = vector[pivot], vector[column]
+        divisor = matrix[column][column]
+        for row in range(size):
+            if row == column:
+                continue
+            factor = matrix[row][column] / divisor
+            for k in range(column, size):
+                matrix[row][k] -= factor * matrix[column][k]
+            vector[row] -= factor * vector[column]
+    return [vector[i] / matrix[i][i] for i in range(size)]
+
+
+def perspective(image, tilt: float = 0.08):
+    """
+    Photographed at an angle, which every hand-held photograph is.
+
+    The top edge is narrowed relative to the bottom, so the text is trapezoidal
+    rather than merely rotated. Tesseract deskews a rotation and cannot deskew
+    this, which is why it is the degradation most likely to find something --
+    and why it was worth getting right rather than approximately.
+    """
+    width, height = image.size
+    inset = width * tilt
+    source = [(0, 0), (width, 0), (width, height), (0, height)]
+    target = [(inset, 0), (width - inset, 0), (width, height), (0, height)]
+    return image.transform(
+        (width, height), Image.PERSPECTIVE,
+        _perspective_coefficients(source, target),
+        resample=Image.BICUBIC, fillcolor=255)
+
+
+def lit_unevenly(image, strength: float = 0.45):
+    """
+    One side brighter than the other, which is what a kitchen light does.
+
+    Applied as a horizontal ramp multiplied into the image, so the dark side
+    loses contrast rather than the whole picture dimming. A global threshold
+    then cannot serve both halves, which is the actual problem uneven lighting
+    causes for OCR.
+    """
+    width, height = image.size
+    ramp = Image.linear_gradient("L").resize((width, height))
+    ramp = ramp.point(lambda v: int(255 - strength * v))
+    return Image.composite(image, Image.new("L", image.size, 255),
+                           ramp).point(
+        lambda v: min(255, int(v * 1.0)))
+
+
+def compressed(image, quality: int = 30):
+    """JPEG, because every photograph from a phone has been through it."""
+    buffer = io.BytesIO()
+    image.convert("L").save(buffer, format="JPEG", quality=quality)
+    buffer.seek(0)
+    return Image.open(buffer).convert("L")
+
+
+def small(image, factor: float = 0.45):
+    """
+    A phone at arm's length: fewer pixels per character than a scan.
+
+    Downscaled and left there rather than scaled back up, because the thing
+    being tested is whether the engine can work at that density.
+    """
+    return image.resize((int(image.width * factor), int(image.height * factor)),
+                        Image.LANCZOS)
+
+
+def creased(image, position: float = 0.55):
+    """A fold across the middle: a dark line, and the print either side of it."""
+    out = image.copy()
+    draw = ImageDraw.Draw(out)
+    y = int(out.height * position)
+    for offset, shade in ((-1, 200), (0, 120), (1, 200)):
+        draw.line([(0, y + offset), (out.width, y + offset)], fill=shade)
+    return out
+
+
+def photographed(image):
+    """
+    All of it at once, in the order a camera applies them.
+
+    The realistic case. Each of the others isolates one thing so a failure says
+    which; this one says whether the whole path survives a photograph, and it
+    is the number to quote.
+    """
+    return compressed(small(lit_unevenly(perspective(blurred(image, 0.8)))), 35)
+
+
+DEGRADATIONS.update({
+    "perspective": perspective,
+    "lit_unevenly": lit_unevenly,
+    "compressed": compressed,
+    "small": small,
+    "creased": creased,
+    "photographed": photographed,
+})

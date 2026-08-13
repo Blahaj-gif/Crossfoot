@@ -43,7 +43,12 @@ def _read_image(case, degradation, tmp_path):
     image = render.DEGRADATIONS[degradation](render.render(case["text"]))
     path = render.write(image, str(tmp_path / f"{case['name']}-{degradation}.png"))
     read = ocr.read_image(path)
-    extracted = R.extract(read["text"], read["lines"])
+    # Through the same call production makes, degraded flag included.
+    # An earlier version passed only the text and the lines, so the
+    # measurement never exercised the guard that refuses a bad
+    # photograph -- it was measuring a code path nobody runs.
+    extracted = R.extract(read["text"], read["lines"],
+                          degraded=read.get("degraded", False))
     return read, extracted, R.as_receipt(extracted)
 
 

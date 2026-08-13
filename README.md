@@ -197,31 +197,38 @@ were written by reading the paper rather than by running the parser.
 **As text**, every field on all 22 reads exactly as stated, and none of them
 reconciles on a wrong reading.
 
-**As images**, rendered and then damaged four ways, read with Tesseract:
+**As images**, rendered and then damaged eleven ways, read with Tesseract:
 
 | | read exactly | silent passes |
 |---|---|---|
+| uneven lighting | 18 / 22 | **0** |
+| sensor noise | 18 / 22 | **0** |
 | clean | 17 / 22 | **0** |
 | faded (thermal paper in a wallet) | 17 / 22 | **0** |
-| sensor noise | 18 / 22 | **0** |
+| folded across the middle | 17 / 22 | **0** |
+| photographed at an angle | 16 / 22 | **0** |
 | blurred | 15 / 22 | **0** |
-| rotated 2.5° | 14 / 22 | **0** |
+| JPEG at quality 30 | 15 / 22 | **0** |
+| rotated | 13 / 22 | **0** |
+| low resolution | 2 / 22 | **0** |
+| **all of it at once** | 1 / 22 | **0** |
 
-The second column is the one that matters. Tesseract misreads digits: a zero
-becomes an eight, a `0.50` becomes `Q.50`. It happens on maybe a quarter of
-these receipts, and **not once does a misread come out reconciled.** The checks
-catch it and say so, which is the entire point of the design: the tool is not
-promising to read your receipt perfectly, it is promising to tell you when it
-did not.
+The second column is the only one that is asserted. Tesseract misreads digits:
+a zero becomes an eight, a `0.50` becomes `Q.50`. It happens on a quarter of
+these receipts and, across eleven kinds of damage, **not once does a misread
+come out reconciled**. The tool is not promising to read your receipt
+perfectly. It is promising to tell you when it did not.
 
-That is possible because the bank statement is a CSV. OCR cannot corrupt it, so
-a receipt misread even *consistently* still fails against a number that was
-never photographed.
+Two things make that hold. The bank statement is a CSV, so OCR cannot corrupt
+it, and a receipt misread even *consistently* still fails against a number that
+was never photographed. And a photograph the engine could not make out is
+refused as a whole rather than mined for whichever fields happened to survive.
 
-Getting there took four bugs that only a photograph could have shown, listed in
-the commit that fixed them. The largest: Tesseract's default page segmentation
-decides a receipt is a multi-column document and throws most of the amount
-column away. It found one amount in five, and every field came back empty.
+The last two rows are the honest bad news: **a low-resolution photograph does
+not work, and a badly degraded one does not work at all.** They come back
+unchecked with a reason, which is the correct answer and not a useful one. If
+your receipts arrive as phone photographs taken at a distance, this is not
+ready for you yet.
 
 **Still not a photograph of crumpled thermal paper.** These are rendered images
 of typed text with damage applied, which is a real test and is not the same
