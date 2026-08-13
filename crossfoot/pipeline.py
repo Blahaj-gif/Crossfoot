@@ -51,13 +51,15 @@ def receipts_in(directory: str):
         except document.UnreadableDocument as e:
             unreadable.append((name, str(e)))
             continue
-        parsed = R.as_receipt(R.extract(read["text"]))
+        parsed = R.as_receipt(R.extract(read["text"], read.get("lines")))
         # The name the receipt prints, falling back to the filename. A photo
         # called IMG_2043 names no merchant, and the matcher tests this string
         # against the bank's descriptor.
         parsed["merchant"] = (parsed.get("merchant")
                               or os.path.splitext(name)[0].replace("_", " "))
         parsed["source"] = name
+        # Kept so the reviewer can crop the original when a field is doubtful.
+        parsed["path"] = path
         parsed["reader"] = read["reader"]
         parsed["degraded"] = read.get("degraded", False)
         receipts.append(parsed)

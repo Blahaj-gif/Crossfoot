@@ -13,6 +13,8 @@ should not be made to install a machine-learning stack to do it.
 """
 import os
 
+from crossfoot.read import ocr
+
 #: Read once at import so the answer cannot change mid-run and produce two
 #: different readings of the same document in one session.
 try:                                        # pragma: no cover - environment
@@ -30,8 +32,10 @@ class UnreadableDocument(Exception):
 
 
 def readers() -> list:
-    """What is available, for `get_data_sources`-style honesty in the UI."""
-    return (["docling"] if HAVE_DOCLING else []) + ["plain text"]
+    """What is available, stated rather than implied."""
+    return ((["docling"] if HAVE_DOCLING else [])
+            + [f"ocr:{name}" for name in ocr.available()]
+            + ["plain text"])
 
 
 def read(path: str) -> dict:
@@ -45,6 +49,15 @@ def read(path: str) -> dict:
     """
     if not os.path.isfile(path):
         raise UnreadableDocument(f"{path} is not a file")
+
+    # A photograph, which is what almost every receipt actually is. Routed
+    # before anything else because reading a JPEG as text produces binary noise
+    # that a parser will cheerfully find amounts in.
+    if ocr.is_image(path):
+        try:
+            return ocr.read_image(path)
+        except ocr.NoEngine as e:
+            raise UnreadableDocument(str(e)) from e
 
     suffix = os.path.splitext(path)[1].lower()
     if suffix in PLAIN_SUFFIXES or not HAVE_DOCLING:

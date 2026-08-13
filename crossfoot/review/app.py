@@ -19,7 +19,8 @@ import streamlit as st
 
 from crossfoot import verdict as V
 from crossfoot import pipeline as P
-from crossfoot.read import document
+from crossfoot.ingest import inbox as I
+from crossfoot.read import document, ocr
 from crossfoot.review import decisions as D  # the write path; this file only
 from crossfoot.review import queue as Q
 
@@ -117,6 +118,17 @@ def _render_item(item, index, log_path):
                     field = extraction["fields"][name]
                     st.markdown(f"**{name}** — `{field.line.strip()}` "
                                 f"(line {field.line_number}, {field.how})")
+                    # The ink itself, when the text came off a photograph.
+                    # Telling somebody a total is doubtful and making them go
+                    # and find the original is most of the way to them not
+                    # bothering; showing them the paper is the whole point of
+                    # having kept the box.
+                    if field.box and receipt.get("path"):
+                        try:
+                            st.image(ocr.crop(receipt["path"], field.box),
+                                     caption=f"{name}, as it appears on the receipt")
+                        except Exception as e:
+                            st.caption(f"(could not crop the original: {e})")
 
         # The gate. Nothing above this point can write; nothing below it runs
         # without a click.
@@ -142,7 +154,8 @@ def _render_item(item, index, log_path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="crossfoot-review")
-    parser.add_argument("--statement", required=True)
+    parser.add_argument("--inbox", help="one folder holding both; sorted by content")
+    parser.add_argument("--statement")
     parser.add_argument("--receipts", default="receipts")
     parser.add_argument("--decisions", default="decisions.jsonl")
     args, _ = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
@@ -150,9 +163,34 @@ def main(argv=None):
     st.set_page_config(page_title="Crossfoot", layout="centered")
     st.title("Crossfoot")
 
+    if args.inbox:
+        # Drag-and-drop, which is the only intake most people will ever want.
+        # It writes into the inbox folder rather than a hidden temporary one,
+        # so what the tool is reading is a directory the person can open, and
+        # deleting a file there is how you take it back.
+        dropped = st.file_uploader(
+            "Drop your bank export and your receipts here",
+            accept_multiple_files=True,
+            help="Which file is which is decided by reading them, not by name.")
+        for upload in dropped or []:
+            target = os.path.join(args.inbox, upload.name)
+            if not os.path.exists(target):
+                os.makedirs(args.inbox, exist_ok=True)
+                with open(target, "wb") as fh:
+                    fh.write(upload.getbuffer())
+        sorted_folder = I.sort(args.inbox)
+        for name, why in sorted_folder["ignored"]:
+            st.caption(f"skipped `{name}` — {why}")
+        if sorted_folder["problem"]:
+            st.info(sorted_folder["problem"])
+            st.stop()
+        statement_path, receipts_dir = sorted_folder["statements"][0], args.inbox
+    else:
+        statement_path, receipts_dir = args.statement, args.receipts
+
     try:
-        loaded = _load(args.statement, args.receipts,
-                       _stamp_for(args.statement, args.receipts))
+        loaded = _load(statement_path, receipts_dir,
+                       _stamp_for(statement_path, receipts_dir))
     except P.Refused as e:
         st.error(str(e))
         st.stop()

@@ -12,6 +12,7 @@ import sys
 
 from crossfoot.export import rows as E
 from crossfoot.export import targets as T
+from crossfoot.ingest import inbox as I
 from crossfoot.ingest import statement as S
 from crossfoot.pipeline import Refused, load
 # The *reader* of the decision log, which cannot write one. `export` needs to
@@ -26,14 +27,50 @@ def _money(c) -> str:
     return f"{c // 100:,}.{c % 100:02d}"
 
 
+def _inputs(args):
+    """
+    Resolve --inbox into a statement and a receipts folder, or pass the
+    explicit pair through.
+
+    One folder is the first run; the explicit pair is every run after, when
+    somebody has a place they keep things. Both reach the same loader.
+    """
+    if not getattr(args, "inbox", None):
+        return args.statement, args.receipts, None
+    sorted_folder = I.sort(args.inbox)
+    if sorted_folder["problem"]:
+        return None, None, sorted_folder
+    return sorted_folder["statements"][0], args.inbox, sorted_folder
+
+
+def _report_inbox(sorted_folder):
+    if not sorted_folder:
+        return
+    for name, why in sorted_folder["ignored"]:
+        # Skipped files are announced. Somebody who drops a file in and sees
+        # nothing happen concludes the tool is broken when it is being careful.
+        print(f"skipped {name}: {why}", file=sys.stderr)
+    print(f"inbox: 1 statement, {len(sorted_folder['receipts'])} receipts",
+          file=sys.stderr)
+
+
 def check(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="crossfoot check")
-    parser.add_argument("--statement", required=True)
+    parser.add_argument("--inbox", help="one folder holding both; sorted by content")
+    parser.add_argument("--statement")
     parser.add_argument("--receipts", default="receipts")
     args = parser.parse_args(argv)
+    if not args.inbox and not args.statement:
+        parser.error("give --inbox FOLDER, or --statement FILE")
+
+    statement, receipts, sorted_folder = _inputs(args)
+    if statement is None:
+        print(sorted_folder["problem"], file=sys.stderr)
+        return 2
+    _report_inbox(sorted_folder)
 
     try:
-        loaded = load(args.statement, args.receipts)
+        loaded = load(statement, receipts)
     except Refused as e:
         print(str(e), file=sys.stderr if "Cannot read" in str(e) else sys.stdout)
         return e.code
@@ -67,7 +104,8 @@ def export(argv=None) -> int:
     and not in the reviewer.
     """
     parser = argparse.ArgumentParser(prog="crossfoot export")
-    parser.add_argument("--statement", required=True)
+    parser.add_argument("--inbox", help="one folder holding both; sorted by content")
+    parser.add_argument("--statement")
     parser.add_argument("--receipts", default="receipts")
     parser.add_argument("--decisions", default="decisions.jsonl")
     parser.add_argument("--to", default="generic", choices=sorted(T.TARGETS))
@@ -75,9 +113,16 @@ def export(argv=None) -> int:
     parser.add_argument("--account", default="",
                         help="firefly: the asset account id these belong to")
     args = parser.parse_args(argv)
+    if not args.inbox and not args.statement:
+        parser.error("give --inbox FOLDER, or --statement FILE")
+
+    statement, receipts, sorted_folder = _inputs(args)
+    if statement is None:
+        print(sorted_folder["problem"], file=sys.stderr)
+        return 2
 
     try:
-        loaded = load(args.statement, args.receipts)
+        loaded = load(statement, receipts)
     except Refused as e:
         print(str(e), file=sys.stderr)
         return e.code

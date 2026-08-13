@@ -28,19 +28,12 @@ here is a liability, not a result, and it is never counted as clean.
 
 | | Built | Refuses to |
 |---|---|---|
-| 1 | **Drop** — a statement file (CSV or OFX) and a folder of receipts, both named on the command line. | accept a statement whose own running balance does not step correctly row to row, or whose rows do not sum to its declared period total: that export is truncated, and every verdict downstream would rest on a partial ledger. |
-| 2 | **Read** — Docling for layout where installed, plain text otherwise. Every field keeps its confidence and the line it came from. | use a total it read below threshold. It names the field and shows you the line. |
+| 1 | **Drop** — one folder. Put the bank export and the receipts in it and point Crossfoot at it; which file is which is decided by *reading* them. A watch loop and drag-and-drop in the reviewer do the same thing. | accept a statement whose own running balance does not step correctly row to row, or whose rows do not sum to its declared period total: that export is truncated, and every verdict downstream would rest on a partial ledger. |
+| 2 | **Read** — Docling for PDFs, Tesseract or EasyOCR for photographs, plain text otherwise. Every field keeps its confidence, the line it came from, and — from a photograph — the rectangle on the page. | use a total it read below threshold. It names the field and shows you the crop of the actual paper it was read from. |
 | 3 | **Match** — amount, date window, merchant string. Fuzzy on the name, exact on the cents. | auto-resolve a tie. A guess that looks like a match is worse than a gap that looks like a gap. |
 | 4 | **Crossfoot** — the four checks. | widen a tolerance far enough to hide a magnitude error. Rounding gets cents; nothing gets a percent. |
 | 5 | **Review** — only failures and unchecked reach a human, ordered by money at risk. | let an assistant clear the queue. Approval is a keystroke in your window; there is no path to it from the model's side. |
 | 6 | **Export** — CSV, Beancount, Firefly III, Actual Budget, verdict attached as a tag. | export an *unchecked* row as though it reconciled. |
-
-**Not built, and named here so the table above is not read as a promise:** no
-watched folder, no email intake, no drag-and-drop; no image handling at all, so
-no crops and no pixel boxes — a field's provenance is the line of text it came
-from; and no local vision model, so a photographed thermal receipt is only as
-readable as whatever text your reader can get out of it. Those were in the
-design and are not in the code.
 
 Step 6 is the strategy. Crossfoot does not compete with Firefly III or Actual
 Budget — 52,000 stars between them and no receipt verification at all. It feeds
@@ -48,15 +41,17 @@ them.
 
 ## Status
 
-All six steps exist. 341 tests.
+All six steps exist. 392 tests.
 
 ```
 pip install -e ".[dev]"
 pytest
 
-crossfoot check  --statement bank.csv --receipts ./receipts   # read-only
-crossfoot review --statement bank.csv --receipts ./receipts   # the only way to decide
-crossfoot export --statement bank.csv --receipts ./receipts --to actual --out ledger.csv
+crossfoot check  --inbox ./inbox                      # read-only
+crossfoot review --inbox ./inbox                      # the only way to decide
+crossfoot export --inbox ./inbox --to actual --out ledger.csv
+
+# --statement FILE --receipts DIR still works if you keep them apart
 ```
 
 `check` exits 0 when nothing is outstanding, 1 when something needs a person,
@@ -71,6 +66,30 @@ something larger without the caller parsing prose.
 unverified        104.20  2026-08-09  SUNRISE CAFE SF
             no receipt is matched to this charge
 ```
+
+## Being billed twice
+
+The one finding here that needs no receipt at all, so it works on the first run
+before you have photographed anything — and the only one that can hand you
+money back rather than telling you your paperwork is tidy.
+
+```
+2 possibly billed twice, 7 need you, 1740.75 at risk, 0 reconciled, 5 unchecked
+-------------------------------------------------------------------------------
+possible duplicate        842.19  2026-08-14  HOME DEPOT #4471
+            two charges of 842.19 at this merchant, the same day
+possible duplicate          4.20  2026-08-06  SQ *BLUE BOTTLE 0042
+            two charges of 4.20 at this merchant, the same day
+```
+
+Nothing asserts a duplicate. Two identical charges are a fact; whether that is
+one purchase billed twice or two coffees on a Saturday is not in the statement.
+So it shows the pair and says what makes it suspicious, and you decide.
+
+Suppressed, because an alarm that fires twelve times a year teaches people to
+skim: a run whose gaps all sit near a month is a subscription, and a refund of
+the same amount afterwards means it was already put right — still shown,
+because it says the merchant does this, but not counted as at risk.
 
 ## Into the tool you already use
 
@@ -104,13 +123,39 @@ worked around: receipts and statements are the most sensitive documents most
 people own, and a tool that promises they never leave the machine should have
 no code capable of sending them. CI asserts the absence of the imports.
 
-Docling is an optional extra (`pip install 'crossfoot[read]'`). Without it,
-PDFs are read as plain text and every number from one is marked *degraded* in
-the queue rather than quietly used. The checking layer itself is arithmetic and
-stdlib: nobody should have to install a machine-learning stack to reconcile
-numbers they already have.
+## Reading what you actually have
+
+| Extra | For |
+|---|---|
+| *(none)* | CSV and OFX statements, plain-text receipts. The checking layer is arithmetic and stdlib — nobody should install a machine-learning stack to reconcile numbers they already have. |
+| `crossfoot[ocr]` | Photographs, via Tesseract. Needs the tesseract binary; fast and accurate, and it reports a confidence and a rectangle per word. |
+| `crossfoot[ocr-heavy]` | Photographs with no system package, via EasyOCR. Much larger install. |
+| `crossfoot[read]` | PDFs, via Docling. |
+| `crossfoot[ui]` | The review window. |
+
+Nothing degrades silently. A PDF read without Docling, or a photograph the
+engine was unsure about, is marked **degraded** and its numbers are shown as
+evidence rather than used as figures. A photograph with no OCR engine installed
+is *refused* — reading a JPEG as text yields binary noise that a parser will
+cheerfully find amounts in.
+
+Every engine runs locally on data already on your machine. There is
+deliberately no cloud OCR backend: an OCR API is the one line of code that
+would turn "your receipts never leave this machine" into a lie, and EasyOCR is
+constructed with `download_enabled=False` so it cannot fetch weights either.
 
 ### What is deliberately not built
+
+**Email intake, and it is not an oversight.** Fetching receipts from a mailbox
+means IMAP, which means this project contains code that opens a socket — and
+"no code here is capable of making a network request", asserted by CI, is doing
+more work for the people this is for than an email feature would. It would also
+mean holding a mail credential, which is a second secret to protect, for access
+to a mailbox containing far more than receipts.
+
+It is also unnecessary. Every mail client can save attachments to a folder, and
+the inbox sorts by content, so a rule in *your* mail client drops receipts
+straight in and Crossfoot never sees your mail. Same outcome, none of the cost.
 
 `split` and `correct` are accepted as decisions and recorded, but nothing yet
 consumes them. There is no MCP server — when there is, it will import the queue

@@ -58,14 +58,20 @@ _CURRENCY = re.compile(r"[$£€¥₹]|\b(usd|eur|gbp|jpy|thb|sgd|aud|cad)\b", r
 class Field:
     """A value, how sure we are, and where it came from."""
 
-    __slots__ = ("value", "confidence", "line_number", "line", "how")
+    __slots__ = ("value", "confidence", "line_number", "line", "how", "box")
 
-    def __init__(self, value, confidence, line_number=None, line="", how=""):
+    def __init__(self, value, confidence, line_number=None, line="", how="",
+                 box=None):
         self.value = value
         self.confidence = confidence
         self.line_number = line_number
         self.line = line
         self.how = how
+        #: (left, top, right, bottom) on the original image, when the text came
+        #: from a photograph. None for a PDF or a text file, where there is no
+        #: page to point at. This is what lets the queue show somebody the ink a
+        #: doubtful total was read from instead of asking them to trust it.
+        self.box = box
 
     @property
     def trusted(self) -> bool:
@@ -104,15 +110,40 @@ def _label_on(line: str):
     return best[0] if best else None
 
 
-def extract(text: str) -> dict:
+def _boxes_by_line(ocr_lines):
+    """
+    Line index -> the rectangle that line occupies, from an OCR reading.
+
+    The bounding box of the whole line rather than of the number, deliberately.
+    A box drawn round "17.31" is a crop of four digits with no context; a box
+    round "TOTAL      17.31" is a picture a person can actually check.
+    """
+    boxes = {}
+    for index, line in enumerate(ocr_lines or []):
+        words = line.get("words") or []
+        if not words:
+            continue
+        boxes[index] = (min(w.left for w in words), min(w.top for w in words),
+                        max(w.left + w.width for w in words),
+                        max(w.top + w.height for w in words))
+    return boxes
+
+
+def extract(text: str, ocr_lines=None) -> dict:
     """
     A receipt's fields, each with its confidence and the line it came from.
 
     Line items are only collected between the first item-looking line and the
     subtotal, so a phone number, a loyalty balance or the change due never
     enters the column that is about to be summed.
+
+    `ocr_lines` is what `read.ocr` produced, when the text came off a
+    photograph. Passing it attaches a rectangle to every field, which is the
+    difference between telling somebody a total is doubtful and showing them
+    the paper it was read from.
     """
     lines = [l.rstrip() for l in (text or "").splitlines()]
+    boxes = _boxes_by_line(ocr_lines)
     fields = {}
     subtotal_at = None
 
@@ -132,12 +163,13 @@ def extract(text: str) -> dict:
             # last is the one that was charged.
             if label != "total":
                 continue
-        fields[label] = Field(value, LABELLED, number, line, "labelled")
+        fields[label] = Field(value, LABELLED, number, line, "labelled",
+                              box=boxes.get(number))
         if label == "subtotal":
             subtotal_at = number
 
     if "total" not in fields:
-        fields["total"] = _infer_total(lines)
+        fields["total"] = _infer_total(lines, boxes)
 
     return {
         "fields": fields,
@@ -172,7 +204,7 @@ def _merchant(lines):
     return ""
 
 
-def _infer_total(lines) -> Field:
+def _infer_total(lines, boxes=None) -> Field:
     """
     No line said TOTAL. The largest amount in the last third is the usual
     answer and it is usually right, which is exactly why it is not trusted:
@@ -187,7 +219,8 @@ def _infer_total(lines) -> Field:
     if best is None:
         return Field(None, 0.0, how="no amount found anywhere")
     return Field(best[0], INFERRED, best[1], best[2],
-                 "no TOTAL label; largest amount near the foot of the receipt")
+                 "no TOTAL label; largest amount near the foot of the receipt",
+                 box=(boxes or {}).get(best[1]))
 
 
 def _line_items(lines, subtotal_at):

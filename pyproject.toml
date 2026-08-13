@@ -20,6 +20,13 @@ dev = ["pytest", "hypothesis"]
 # and someone who only wants to reconcile numbers they already have should not
 # have to install a machine-learning stack to do it.
 read = ["docling"]
+# Photographs. Tesseract is fast and accurate and needs a system binary;
+# easyocr needs none but is a much heavier install. Both run locally on
+# already-present data — there is deliberately no cloud backend, because an
+# OCR API is the one line of code that would turn "your receipts never leave
+# this machine" into a lie.
+ocr = ["pytesseract", "pillow"]
+ocr-heavy = ["easyocr"]
 ui = ["streamlit>=1.49"]
 
 [project.scripts]
