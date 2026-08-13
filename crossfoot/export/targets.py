@@ -19,7 +19,8 @@ from crossfoot.export import rows as R
 
 #: Every verdict tag, so a target that needs them enumerated (Firefly's config,
 #: a filter, a bulk delete) does not have to hardcode the list.
-TAGS = (R.RECONCILED, R.ACCEPTED, R.DISCREPANT, R.AMBIGUOUS, R.UNCHECKED)
+TAGS = (R.RECONCILED, R.ACCEPTED, R.DISCREPANT, R.AMBIGUOUS, R.UNCHECKED,
+        R.DUPLICATE)
 
 
 def _csv(fieldnames, records) -> str:

@@ -30,12 +30,14 @@ DISCREPANT = "crossfoot:does-not-reconcile"
 UNCHECKED = "crossfoot:unchecked"
 ACCEPTED = "crossfoot:accepted-by-you"
 AMBIGUOUS = "crossfoot:more-than-one-receipt"
+DUPLICATE = "crossfoot:possible-duplicate"
 
 #: A fourth state that only exists here. A person looked at a discrepancy and
 #: accepted it -- the merchant's arithmetic really was wrong, or the tip was
 #: added later -- and that is neither "reconciled" nor "unchecked". Exporting it
 #: as either would lose the one fact that a human made a call.
 _FROM_STATE = {
+    Q.DUPLICATE: DUPLICATE,
     Q.FAILED: DISCREPANT,
     Q.AMBIGUOUS: AMBIGUOUS,
     Q.UNVERIFIED: UNCHECKED,
@@ -119,6 +121,7 @@ def summary(rows) -> str:
     """
     tally = counts(rows)
     parts = [f"{tally[tag]} {tag.split(':', 1)[1]}"
-             for tag in (RECONCILED, ACCEPTED, DISCREPANT, AMBIGUOUS, UNCHECKED)
+             for tag in (DUPLICATE, RECONCILED, ACCEPTED, DISCREPANT, AMBIGUOUS,
+                         UNCHECKED)
              if tally.get(tag)]
     return f"{len(rows)} transactions: " + ", ".join(parts)

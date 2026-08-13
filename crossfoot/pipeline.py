@@ -14,6 +14,7 @@ queue item — the decision log is not imported at all.
 """
 import os
 
+from crossfoot.ingest import duplicates as DUP
 from crossfoot.ingest import statement as S
 from crossfoot.match import candidates as M
 from crossfoot.read import document
@@ -89,9 +90,17 @@ def load(statement_path: str, receipts_dir: str) -> dict:
             + "\n".join(f"  {p}" for p in acceptance["problems"]))
 
     receipts, unreadable = receipts_in(receipts_dir)
+    # `row` travels with the charge. Two identical charges are identical by
+    # definition, so date-description-amount cannot tell the first from the
+    # second -- which made the duplicate marker flag both halves of every pair.
+    # It is also the only way the queue can say *which* line of your statement.
     charges = [{"amount": line["amount"], "description": line["description"],
-                "date": line["date"], "currency": parsed.get("currency")}
+                "date": line["date"], "currency": parsed.get("currency"),
+                "row": line["row"]}
                for line in parsed["lines"]]
+    # Found on the statement alone, so this works on the very first run --
+    # before anyone has photographed a receipt, and whether or not they ever do.
+    doubled = DUP.suspects(parsed["lines"])
     return {"parsed": parsed, "acceptance": acceptance, "receipts": receipts,
-            "unreadable": unreadable, "charges": charges,
-            "built": Q.build(M.match_all(receipts, charges))}
+            "unreadable": unreadable, "charges": charges, "duplicates": doubled,
+            "built": Q.build(M.match_all(receipts, charges), doubled)}
