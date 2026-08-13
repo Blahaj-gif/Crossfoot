@@ -32,6 +32,7 @@ never by a percentage, because the failure this exists to catch -- a magnitude
 misread, a decimal point in the wrong place, a currency read as another -- is
 off by a factor, and a percentage tolerance is exactly the shape that hides it.
 """
+import re
 from decimal import Decimal, InvalidOperation
 
 RECONCILED = "reconciled"
@@ -95,14 +96,122 @@ class Cents(int):
         return f"Cents({int(self)})"
 
 
-def cents(value):
+#: Separators a number may carry, and nothing else. Anything outside this set
+#: plus digits and a sign means the field was not money.
+_SEPARATORS = ".,"
+
+#: Currency marks and accounting furniture stripped before a number is read.
+#: Not a formatting nicety: a statement column of "$-842.19" or "842.19 CR"
+#: parsed to None, and a None amount used to make the row disappear.
+_FURNITURE = re.compile(r"[$£€¥₹\s ']|(?<![A-Za-z])(?:USD|EUR|GBP|JPY|THB|SGD|AUD|CAD|CHF|SEK|NOK|DKK|PLN|CZK|HUF|INR|CNY|HKD|NZD|ZAR|MXN|BRL)(?![A-Za-z])",
+                        re.I)
+
+
+def _groups_correctly(whole: str, separator: str) -> bool:
+    """
+    Whether the whole part is grouped the way a thousands separator groups.
+
+    "1.234.567" is one million two hundred thirty-four thousand five hundred
+    and sixty-seven. "1.2" is not a number at all, and without this check it
+    was quietly flattened to "12" -- so `cents("1.2.3")` returned 12.30 rather
+    than admitting the field was never money.
+    """
+    if separator not in whole:
+        return whole.isdigit() or whole == ""
+    groups = whole.split(separator)
+    if not all(g.isdigit() for g in groups):
+        return False
+    return 1 <= len(groups[0]) <= 3 and all(len(g) == 3 for g in groups[1:])
+
+
+def detect_decimal_separator(samples) -> str:
+    """
+    Which character is the decimal point across a whole document.
+
+    A single value cannot always say. "1.005" is one thousand and five to a
+    German bank and three decimal places to nobody -- but in a file that also
+    contains "17.31", the point is plainly the decimal point and "1.005" is a
+    field to refuse rather than read as 1,005.
+
+    Evidence, strongest first: any value carrying both separators settles it
+    outright; otherwise a separator followed by one or two digits is a decimal
+    point. Values that disagree return "" -- ambiguous, decide nothing -- which
+    is the honest answer for a file that mixes conventions and a good reason to
+    look at it.
+    """
+    votes = set()
+    for sample in samples:
+        text = _FURNITURE.sub("", str(sample or "").strip())
+        last_point, last_comma = text.rfind("."), text.rfind(",")
+        if last_point >= 0 and last_comma >= 0:
+            return "." if last_point > last_comma else ","
+        position = max(last_point, last_comma)
+        if position < 0:
+            continue
+        trailing = text[position + 1:]
+        if trailing.isdigit() and 1 <= len(trailing) <= 2:
+            votes.add(text[position])
+    return votes.pop() if len(votes) == 1 else ""
+
+
+def _decimal_separator(text: str):
+    """
+    Which character is the decimal point in this one value, from the value.
+
+    The rule the earlier code did not have, and the reason it read the ordinary
+    European receipt total "17,31" as **$1,731.00**: it stripped every comma and
+    read whatever was left.
+
+      * Both separators present -- the **later** one is the decimal point.
+        "1,234.56" and "1.234,56" are the same amount written two ways, and
+        which comes last settles it with no ambiguity at all.
+      * One separator, followed by exactly **three** digits -- it is a thousands
+        separator. Money is not written to three decimal places, so "1,234" and
+        "1.234" both mean one thousand two hundred and thirty four.
+      * One separator, followed by one or two digits -- it is the decimal point.
+      * No separator -- nothing to decide.
+
+    Returns the character, or None when the value carries no separator. Raises
+    nothing: an unreadable value is `cents`'s problem, not this function's.
+
+    Known limit, stated rather than hidden: the three-digit rule assumes a
+    two-decimal currency. Dinars and the dirham are filed to three, and this
+    would read 1.234 KWD as 1,234. Out of scope until a corpus contains one.
+    """
+    last_point, last_comma = text.rfind("."), text.rfind(",")
+    if last_point >= 0 and last_comma >= 0:
+        return "." if last_point > last_comma else ","
+    position = max(last_point, last_comma)
+    if position < 0:
+        return None
+    separator = text[position]
+    trailing = text[position + 1:]
+    if len(trailing) == 3 and trailing.isdigit():
+        return None                 # a thousands separator; the value is whole
+    return separator
+
+
+def cents(value, decimal: str = ""):
     """
     A money field as an integer number of cents, or None if it is not one.
+
+    `decimal` is the separator the surrounding *document* uses, where the
+    caller knows it — `detect_decimal_separator` over the whole column. Passing
+    it turns the one genuinely ambiguous shape into a refusal instead of a
+    guess: in a file whose decimal point is ".", the value "1.005" has three
+    decimal places and is not money, where the same string alone is far more
+    likely to be a European one thousand and five.
 
     Returns None rather than raising or coercing to zero. A missing total and a
     total of nothing are different facts, and treating an unreadable field as
     0.00 is how a receipt that could not be read reconciles perfectly against a
     charge of nothing.
+
+    Reads the decimal separator out of the value itself rather than assuming a
+    locale -- see `_decimal_separator`. Accepts the accounting conventions a
+    real export uses: a currency mark, parentheses for negative, and a trailing
+    CR or DR. Each of those used to produce None, and a None amount used to make
+    the whole row vanish from the statement.
 
     Floats are accepted because upstream parsers produce them, and are routed
     through `str` so that 19.99 is nineteen ninety-nine rather than
@@ -116,9 +225,68 @@ def cents(value):
         return None
     if isinstance(value, int):
         return Cents(value * 100)
+    if isinstance(value, float):
+        text = repr(value)
+    elif isinstance(value, Decimal):
+        text = str(value)
+    elif isinstance(value, str):
+        text = value
+    else:
+        return None
+
+    text = _FURNITURE.sub("", text.strip())
+    if not text:
+        return None
+
+    sign = 1
+    # Accounting negatives. "(42.00)" is a debit of forty-two, and it is the
+    # commonest export convention this could not read.
+    if text.startswith("(") and text.endswith(")"):
+        sign, text = -1, text[1:-1].strip()
+    upper = text.upper()
+    for mark, direction in (("CR", 1), ("DR", -1)):
+        if upper.endswith(mark):
+            sign *= direction
+            text = text[: -len(mark)].strip()
+            break
+    if text.startswith("-"):
+        sign, text = -sign, text[1:].strip()
+    elif text.startswith("+"):
+        text = text[1:].strip()
+
+    if not text or any(c not in "0123456789" + _SEPARATORS for c in text):
+        return None
+
+    separator = _decimal_separator(text)
+    # The document overrules the value. Where the file's decimal point is known
+    # to be ".", "1.005" is three decimal places rather than a European
+    # thousand, and three decimal places in a two-decimal currency is a field
+    # to refuse rather than round.
+    if decimal and decimal in text:
+        separator = decimal
+    elif decimal and separator == decimal:
+        separator = None
+
+    if separator is None:
+        grouping = "." if "." in text else ","
+        if not _groups_correctly(text, grouping):
+            return None
+        digits = text.replace(".", "").replace(",", "")
+        if not digits.isdigit():
+            return None
+        return Cents(sign * int(digits) * 100)
+
+    whole, _, fraction = text.rpartition(separator)
+    if not fraction.isdigit():
+        return None
+    other = "," if separator == "." else "."
+    if not _groups_correctly(whole, other):
+        return None
+    whole = whole.replace(other, "")
+
     try:
-        amount = Decimal(str(value).strip().replace(",", ""))
-    except (InvalidOperation, ValueError, AttributeError):
+        amount = Decimal(f"{whole or '0'}.{fraction}")
+    except InvalidOperation:
         return None
     if not amount.is_finite():
         return None
@@ -127,7 +295,7 @@ def cents(value):
     # a field that was never money. Say so rather than silently truncating.
     if scaled != scaled.to_integral_value():
         return None
-    return Cents(int(scaled))
+    return Cents(sign * int(scaled))
 
 
 def _sum_lines(lines):
@@ -198,6 +366,21 @@ def check_subtotal_builds_the_total(receipt) -> Check:
                         f"against a printed total of {_money(total)}")
 
 
+#: Symbol to code, so a receipt marked "$" and a statement marked "USD" are not
+#: mistaken for two currencies. "$" is read as USD, which is a guess about
+#: Canada, Australia and Singapore — so it is only ever used to establish
+#: *sameness*, never to claim a document is American.
+_CURRENCY_CODES = {"$": "USD", "£": "GBP", "€": "EUR", "¥": "JPY", "₹": "INR"}
+
+
+def _currency_of(document):
+    mark = (document or {}).get("currency")
+    if not mark:
+        return None
+    mark = str(mark).strip()
+    return _CURRENCY_CODES.get(mark, mark.upper() if mark.isalpha() else None)
+
+
 def check_receipt_matches_the_charge(receipt, charge) -> Check:
     """
     The receipt's total against the amount that actually left the account.
@@ -222,6 +405,19 @@ def check_receipt_matches_the_charge(receipt, charge) -> Check:
         return Check("receipt_matches_charge", None,
                      detail=("no receipt is matched to this charge" if total is None
                              else "the statement line states no amount"))
+
+    # Currency was read off the receipt, stored, and consulted by nothing --
+    # which is worse than not reading it, because it looked handled. Two
+    # amounts in different currencies are not equal and are not unequal; there
+    # is no comparison to make without a rate, so the check does not run.
+    theirs = _currency_of(receipt)
+    ours = _currency_of(charge)
+    if theirs and ours and theirs != ours:
+        return Check("receipt_matches_charge", None,
+                     detail=(f"the receipt is in {theirs} and the charge in {ours} — "
+                             "comparing them needs the rate and the fee the bank "
+                             "applied, neither of which is in either document"))
+
     ok = abs(total) == abs(charged)
     return Check("receipt_matches_charge", ok, expected=abs(charged), actual=abs(total),
                  detail=(f"receipt total {_money(abs(total))} against "

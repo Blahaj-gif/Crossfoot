@@ -53,8 +53,22 @@ def check(argv=None) -> int:
     parser.add_argument("--receipts", default="receipts")
     args = parser.parse_args(argv)
 
-    with open(args.statement, encoding="utf-8", errors="replace") as fh:
-        parsed = S.parse(fh.read(), args.statement)
+    try:
+        with open(args.statement, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError as e:
+        # A mistyped path is the commonest first run and it answered with a
+        # traceback, which reads as broken software rather than a typo.
+        print(f"Cannot read {args.statement}: {e.strerror}.", file=sys.stderr)
+        return 2
+
+    try:
+        parsed = S.parse(text, args.statement)
+    except S.StatementError as e:
+        # Refusals are the point of the ingest step, not a crash. They carry
+        # the reason and what to do about it, so print the reason.
+        print(f"This statement cannot be used:\n  {e}")
+        return 2
     acceptance = S.accept(parsed)
     if not acceptance["usable"]:
         print("This statement is not complete, so nothing below it can be trusted:")

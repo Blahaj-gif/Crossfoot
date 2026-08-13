@@ -58,8 +58,30 @@ def test_an_unreadable_field_is_none_and_never_zero(raw):
     assert v.cents(raw) is None
 
 
-def test_a_third_of_a_cent_was_never_money():
-    assert v.cents("1.005") is None
+def test_a_third_of_a_cent_is_decided_by_the_document_not_the_value():
+    """
+    "1.005" is the one genuinely ambiguous shape: one thousand and five to a
+    German bank, three decimal places to nobody. Alone, the thousands reading
+    is far likelier and is what a lone value gets. In a file that also contains
+    "17.31" the point is plainly the decimal point, and three decimal places in
+    a two-decimal currency is a field to refuse rather than round.
+    """
+    assert v.cents("1.005") == 100500
+    assert v.detect_decimal_separator(["17.31", "1.005", "842.19"]) == "."
+    assert v.cents("1.005", decimal=".") is None
+    assert v.cents("1.005", decimal=",") == 100500
+
+
+def test_a_value_that_is_not_grouped_like_money_is_refused():
+    """
+    Without a grouping check the whole part was flattened: "1.2.3" became
+    "12" + ".3" and returned 12.30, which is a number this invented.
+    """
+    for raw in ("1.2.3", "1.22.3", "12.34.56", "5..00", "--5.00"):
+        assert v.cents(raw) is None, raw
+    # And the legitimate shape that looks the same must survive.
+    assert v.cents("1.234.567,89") == 123456789
+    assert v.cents("1,234,567.89") == 123456789
 
 
 # --------------------------------------------------------------------------

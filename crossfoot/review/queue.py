@@ -14,9 +14,14 @@ to a computer. Whoever is doing this has twenty minutes on a Sunday; the
 ordering decides what those minutes buy.
 
 This module **reads**. It contains no function that writes a decision, and it
-imports nothing that does -- `crossfoot.review.decisions` is a separate module
-reached only from the review UI. That separation is structural rather than
-polite: an assistant given the whole of this file still cannot clear an item.
+imports nothing that does -- the write path is a separate module reached only
+from the review UI, and CI asserts that it stays that way.
+
+Structural, and worth being exact about how far that goes. An assistant handed
+the whole of this file has no reachable path to clearing an item, which is the
+property this buys. It is **not** a security boundary: any process on the
+machine can import the write path directly and pass the string "human". What
+stops that being invisible is the hash chain on the log, not this separation.
 """
 from crossfoot import verdict as V
 

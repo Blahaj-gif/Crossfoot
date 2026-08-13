@@ -224,37 +224,55 @@ def match_all(receipts, charges, window_days: int = DEFAULT_WINDOW_DAYS) -> list
     confident pairing is left. Order of rows in the file then changes nothing.
     """
     charges = list(charges or [])
-    remaining = list(receipts or [])
-    assigned = {}
+    receipts = list(receipts or [])
 
-    while True:
-        best = None
-        for index, charge in enumerate(charges):
-            if index in assigned:
-                continue
-            outcome = resolve(candidates(remaining, charge, window_days))
-            if outcome["receipt"] is None:
-                continue
-            score = max((c["score"] for c in candidates(remaining, charge, window_days)
-                         if c["receipt"] is outcome["receipt"]), default=0.0)
-            if best is None or score > best[0]:
-                best = (score, index, outcome["receipt"])
-        if best is None:
-            break
-        _, index, receipt = best
+    # Indexed by absolute amount, and computed once. The first version of this
+    # recomputed every candidate set on every round, twice per charge, which
+    # measured 171 seconds at 400 charges against 400 receipts -- roughly
+    # O(n²·¹), on a workload where a year of one person's spending is several
+    # thousand rows. The amount is already an exact gate, so it is also a
+    # perfect bucket key: two documents that do not agree to the cent are never
+    # compared at all.
+    by_amount = {}
+    for receipt in receipts:
+        total = cents(receipt.get("total"))
+        if total is not None:
+            by_amount.setdefault(abs(total), []).append(receipt)
+
+    all_found = [candidates(by_amount.get(abs(cents(c.get("amount")) or 0), []),
+                            c, window_days)
+                 if cents(c.get("amount")) is not None else []
+                 for c in charges]
+
+    # Every plausible pairing in the month, best first. Assignment then walks
+    # this once, taking each pairing whose charge and receipt are both still
+    # free -- so the order of rows in the file changes nothing, and no set is
+    # computed twice.
+    pairings = sorted(
+        ((found[0]["score"], index, found[0]["receipt"])
+         for index, found in enumerate(all_found)
+         if found and resolve(found)["receipt"] is not None),
+        key=lambda p: -p[0])
+
+    assigned, taken = {}, set()
+    for _, index, receipt in pairings:
+        if index in assigned or id(receipt) in taken:
+            continue
         assigned[index] = receipt
-        remaining = [r for r in remaining if r is not receipt]
+        taken.add(id(receipt))
 
-    # One final pass, so that what each unmatched charge is *told* reflects the
-    # receipts actually left rather than the ones it was competing for.
+    # A charge that lost its receipt to a better-matching one is re-resolved
+    # against what is actually left, so what it is *told* is true at the end
+    # rather than true at the moment it was considered.
     results = []
     for index, charge in enumerate(charges):
         if index in assigned:
-            receipt = assigned[index]
-            found = candidates([receipt], charge, window_days)
-            results.append({"charge": charge, "receipt": receipt, "ambiguous": [],
-                            "why": resolve(found)["why"], "candidates": found})
-        else:
-            found = candidates(remaining, charge, window_days)
-            results.append({"charge": charge, **resolve(found), "candidates": found})
+            found = candidates([assigned[index]], charge, window_days)
+            results.append({"charge": charge, "receipt": assigned[index],
+                            "ambiguous": [], "why": resolve(found)["why"],
+                            "candidates": found})
+            continue
+        surviving = [c for c in all_found[index] if id(c["receipt"]) not in taken]
+        results.append({"charge": charge, **resolve(surviving),
+                        "candidates": surviving})
     return results
