@@ -40,14 +40,52 @@ Budget — 52,000 stars between them and no receipt story at all. It feeds them.
 
 ## Status
 
-Step 4 exists ([`crossfoot/verdict.py`](crossfoot/verdict.py)) because it is the
-whole argument and the reason the five abandoned attempts at this are 3 KB each.
-Nothing else is built yet.
+All six steps exist. 145 tests.
 
 ```
 pip install -e ".[dev]"
 pytest
+
+crossfoot check  --statement bank.csv --receipts ./receipts   # read-only
+crossfoot review --statement bank.csv --receipts ./receipts   # the only way to decide
 ```
+
+`check` exits 0 when nothing is outstanding, 1 when something needs a person,
+and 2 when the statement itself could not be trusted — so it can be a step in
+something larger without the caller parsing prose.
+
+```
+2 need you, 946.39 at risk, 1 reconciled, 1 unchecked
+-----------------------------------------------------
+    failed        842.19  2026-08-14  HOME DEPOT #4471
+            1 line items sum to 791.44; the receipt prints a subtotal of 797.44
+unverified        104.20  2026-08-09  SUNRISE CAFE SF
+            no receipt is matched to this charge
+```
+
+Docling is an optional extra (`pip install 'crossfoot[read]'`). Without it,
+PDFs are read as plain text and every number from one is marked *degraded* in
+the queue rather than quietly used. The checking layer itself is arithmetic and
+stdlib: nobody should have to install a machine-learning stack to reconcile
+numbers they already have.
+
+### What is deliberately not built
+
+Export (step 6) is designed but unwritten. `split` and `correct` are accepted as
+decisions and recorded, but nothing yet consumes them. There is no MCP server —
+when there is, it will import the queue and never `review/decisions.py`, which
+is the separation a test already enforces.
+
+## The wall
+
+`crossfoot check`, the CLI, the matcher and the queue can all be handed to an
+assistant. None of them can clear a queue item: `review/decisions.py` is the
+only write path and `review/app.py` is its only importer, checked by a test
+that reads the import graph rather than trusting the convention.
+
+Decisions append to `decisions.jsonl`, flushed and fsynced per click, each one
+carrying the numbers the person was actually shown. Re-read a document, get a
+different total, and the old approval no longer applies to it.
 
 ## Why this exists
 

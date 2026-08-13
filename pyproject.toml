@@ -16,9 +16,20 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest"]
+# Layout parsing. Optional because the checking layer is arithmetic and stdlib,
+# and someone who only wants to reconcile numbers they already have should not
+# have to install a machine-learning stack to do it.
+read = ["docling"]
+ui = ["streamlit>=1.49"]
+
+[project.scripts]
+crossfoot = "crossfoot.cli:main"
 
 [tool.setuptools]
-packages = ["crossfoot"]
+# Subpackages are not implied by naming the parent. Naming only "crossfoot"
+# ships a wheel with ingest/, read/, match/ and review/ missing entirely.
+packages = ["crossfoot", "crossfoot.ingest", "crossfoot.read",
+            "crossfoot.match", "crossfoot.review"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

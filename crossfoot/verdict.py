@@ -73,6 +73,28 @@ class Check:
         return f"<Check {self.name} {state} {self.detail}>"
 
 
+class Cents(int):
+    """
+    An amount that has already been counted in cents.
+
+    This exists because of a bug, and the bug is worth the type. `cents(12)`
+    reads a document's "12" as twelve units — twelve dollars — which is right
+    for a field read off a receipt and catastrophic for a value some other
+    module already converted. The receipt reader and the statement parser both
+    hand their amounts on in cents, so a total of 1731 was re-read as $1,731
+    and every charge in an imported statement was inflated a hundredfold.
+
+    Marking the converted value makes the boundary safe by construction rather
+    than by everyone remembering which side they are on. `cents()` returns one
+    of these and passes one straight back out untouched.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self):
+        return f"Cents({int(self)})"
+
+
 def cents(value):
     """
     A money field as an integer number of cents, or None if it is not one.
@@ -86,10 +108,14 @@ def cents(value):
     through `str` so that 19.99 is nineteen ninety-nine rather than
     19.989999999999998.
     """
+    # Before the int branch, because Cents *is* an int and would otherwise be
+    # multiplied by a hundred on every hop between modules.
+    if isinstance(value, Cents):
+        return value
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, int):
-        return value * 100
+        return Cents(value * 100)
     try:
         amount = Decimal(str(value).strip().replace(",", ""))
     except (InvalidOperation, ValueError, AttributeError):
@@ -101,7 +127,7 @@ def cents(value):
     # a field that was never money. Say so rather than silently truncating.
     if scaled != scaled.to_integral_value():
         return None
-    return int(scaled)
+    return Cents(int(scaled))
 
 
 def _sum_lines(lines):
@@ -178,6 +204,17 @@ def check_receipt_matches_the_charge(receipt, charge) -> Check:
 
     The one check that crosses documents, and the only one that can catch a
     merchant charging something other than what they printed.
+
+    Compared as **magnitudes**, because the two documents do not share a sign
+    convention and neither is wrong about it. A statement writes money out as
+    negative; a receipt prints what you paid as a positive number and has no
+    notion of direction at all. Comparing them signed fails every purchase ever
+    made, which is how this was found.
+
+    Direction is not thereby ignored, it is handled one step earlier: the
+    matcher offers no receipt for a money-*in* line, because a receipt
+    reconciles a payment and a credit is not one. Without that, a $50 refund
+    would reconcile perfectly against the $50 purchase receipt it reverses.
     """
     total = cents(receipt.get("total")) if receipt else None
     charged = cents((charge or {}).get("amount"))
@@ -185,10 +222,10 @@ def check_receipt_matches_the_charge(receipt, charge) -> Check:
         return Check("receipt_matches_charge", None,
                      detail=("no receipt is matched to this charge" if total is None
                              else "the statement line states no amount"))
-    ok = total == charged
-    return Check("receipt_matches_charge", ok, expected=charged, actual=total,
-                 detail=(f"receipt total {_money(total)} against "
-                         f"{_money(charged)} charged"))
+    ok = abs(total) == abs(charged)
+    return Check("receipt_matches_charge", ok, expected=abs(charged), actual=abs(total),
+                 detail=(f"receipt total {_money(abs(total))} against "
+                         f"{_money(abs(charged))} charged"))
 
 
 def check_statement_lines_sum_to_its_total(statement) -> Check:
@@ -252,13 +289,24 @@ def reconcile(receipt=None, charge=None) -> dict:
 
 
 def _why(state, failed, checks) -> str:
-    """One line a person reads in the queue, before any number."""
+    """
+    One line a person reads in the queue, before any number.
+
+    For an unchecked item this is not simply the first unrun check. With no
+    receipt at all every check is unrun, and the first one in the list says
+    "the receipt does not state both line items and a subtotal" -- true, and a
+    baffling thing to read about a charge that has no receipt. The absence of
+    the document outranks anything missing inside it.
+    """
     if state == DISCREPANT:
         return failed[0].detail
     if state == RECONCILED:
         return f"{len([c for c in checks if c.ok])} checks agree"
-    unrun = next((c.detail for c in checks if c.ok is None), "nothing to check")
-    return unrun
+
+    across = next((c for c in checks if c.name == "receipt_matches_charge"), None)
+    if across is not None and across.ok is None and "no receipt" in across.detail:
+        return across.detail
+    return next((c.detail for c in checks if c.ok is None), "nothing to check")
 
 
 def _money(c) -> str:

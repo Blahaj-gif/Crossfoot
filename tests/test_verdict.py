@@ -237,6 +237,18 @@ def test_the_verdict_carries_what_is_at_risk_so_the_queue_can_be_ordered_by_it()
     assert v.reconcile(None, {"amount": "1,284.11"})["at_risk"] == 128411
 
 
+def test_a_charge_with_no_receipt_says_so_rather_than_naming_a_missing_subtotal():
+    """
+    With no receipt every check is unrun, and the first in the list complains
+    about line items — true, and a baffling thing to read about a charge that
+    has no document at all. The absence of the receipt outranks anything
+    missing inside it.
+    """
+    why = v.reconcile(None, {"amount": "263.88"})["why"]
+    assert "no receipt" in why
+    assert "subtotal" not in why
+
+
 def test_the_reason_names_the_disagreement_rather_than_the_verdict():
     """
     "Does not reconcile" tells a person nothing they can act on. Both numbers,

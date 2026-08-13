@@ -13,3 +13,11 @@ inbox/
 *.sqlite3
 *.db
 .env
+
+# What a run produces about the person running it. `decisions.jsonl` holds
+# merchant names, dates and amounts; `receipts/` holds the documents
+# themselves. Ignored as globs rather than by name, because listing files one
+# by one is how a portfolio history shipped to PyPI in the sister project.
+*.jsonl
+receipts/
+statements/
