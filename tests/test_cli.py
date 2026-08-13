@@ -8,6 +8,7 @@ It is that neither it nor anything it imports can clear a queue item.
 import ast
 import io
 import os
+import pathlib
 import sys
 
 import pytest
@@ -84,8 +85,17 @@ def test_the_cli_never_imports_the_decision_writer():
 
 
 def test_only_the_review_ui_imports_the_decision_writer():
-    """One importer, and the test names it so a second one is a visible change."""
-    from crossfoot.review import app, decisions, queue
+    """
+    One importer, and the test names it so a second one is a visible change.
+
+    Reads the source rather than importing the modules — deliberately. The
+    first version imported `crossfoot.review.app`, which imports Streamlit,
+    which is an *optional* extra. So the test asserting this project's central
+    safety claim silently did not run on any install that had not asked for the
+    UI, and CI found that on its first ever run. A safety check that only fires
+    when an optional dependency happens to be present is not a safety check.
+    """
+    from crossfoot.review import decisions
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(decisions.__file__)))
     importers = []
@@ -154,3 +164,53 @@ def test_an_export_that_cannot_be_checked_for_completeness_says_so(tmp_path, cap
 
 def test_no_arguments_prints_usage_rather_than_a_traceback(capsys):
     assert cli.main([]) == 2
+
+
+def test_the_checking_layer_imports_nothing_optional():
+    """
+    The generalisation of the bug above. `pip install crossfoot` with no extras
+    must import and run — the verdict layer is arithmetic and stdlib, and that
+    is a claim the README makes. Only the review UI and the document reader may
+    reach for an optional package, and only inside their own module.
+    """
+    optional = {"streamlit", "docling", "plotly", "pandas", "numpy"}
+    allowed = {"crossfoot/review/app.py", "crossfoot/read/document.py"}
+    root = os.path.dirname(os.path.dirname(os.path.abspath(cli.__file__)))
+
+    offenders = []
+    for path in sorted(pathlib.Path(root, "crossfoot").rglob("*.py")):
+        relative = path.relative_to(root).as_posix()
+        if relative in allowed:
+            continue
+        # Module level only. An import inside a function runs when that
+        # function is called, which is the sanctioned way to reach an optional
+        # package -- `cli.review` does exactly that and answers a missing
+        # Streamlit with the install line rather than a traceback. A
+        # module-level import runs at import time and breaks the whole install.
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            names = ([a.name for a in node.names] if isinstance(node, ast.Import)
+                     else [node.module or ""] if isinstance(node, ast.ImportFrom)
+                     else [])
+            for name in names:
+                if name.split(".")[0] in optional:
+                    offenders.append(f"{relative}: {name}")
+    assert not offenders, offenders
+
+
+def test_a_deferred_optional_import_answers_with_the_install_line(monkeypatch, capsys):
+    """
+    The other half of the rule above: reaching for Streamlit when it is absent
+    must produce a sentence, not a stack trace.
+    """
+    import builtins
+
+    real = builtins.__import__
+
+    def refuse(name, *args, **kwargs):
+        if name == "streamlit":
+            raise ImportError("no streamlit here")
+        return real(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", refuse)
+    assert cli.review([]) == 1
+    assert "crossfoot[ui]" in capsys.readouterr().err
