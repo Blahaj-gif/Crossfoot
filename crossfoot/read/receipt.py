@@ -67,7 +67,10 @@ _LABELS = {
 }
 
 #: A number that looks like money: optional currency mark, digits, two decimals.
-_AMOUNT = re.compile(r"(?<![\d.])(-?\d{1,3}(?:[,\s]\d{3})*|-?\d+)[.,](\d{2})(?![\d])")
+#: The decimal mark is captured rather than merely matched, because which one a
+#: receipt uses is a fact about the receipt -- see `_decimal_mark`.
+_AMOUNT = re.compile(
+    r"(?<![\d.])(-?\d{1,3}(?:[,\s]\d{3})*|-?\d+)([.,])(\d{2})(?![\d])")
 
 _CURRENCY = re.compile(r"[$£€¥₹]|\b(usd|eur|gbp|jpy|thb|sgd|aud|cad)\b", re.I)
 
@@ -99,7 +102,57 @@ class Field:
                 f"line={self.line_number} {self.how}>")
 
 
-def _amounts_in(line: str):
+#: Fewer amounts than this and the receipt has not said anything about its own
+#: convention. Two amounts agreeing is not evidence; it is a coincidence with a
+#: fifty percent chance.
+#:
+#: Above it, a plain majority decides. A ratio was tried first -- the majority
+#: had to be twice the minority -- and it was measured too strict to fire on
+#: the case that motivated the whole rule: four points against two commas is
+#: not double, so the receipt was called ambiguous and the misread comma was
+#: read as money. A threshold that does not fire on its own worked example is a
+#: threshold chosen for how it sounds.
+_MARK_MINIMUM = 3
+
+
+def _decimal_mark(lines) -> str:
+    """
+    The one decimal mark this receipt is printed with, or "" if it does not say.
+
+    A till prints one way. A receipt that appears to use both has almost
+    certainly been misread, and the odd one out is the misreading -- which is
+    worth knowing, because it is otherwise invisible. Measured: a photograph of
+    a receipt printing 60.00 / 8.00 / 68.00 / 10.00 / 4.64 / 62.64 came back
+    with the discount as "16,02". Every other amount on it used a point. The
+    total was read correctly, the charge matched it, no subtotal survived to
+    constrain the adjustments -- so the receipt reconciled with a discount that
+    was wrong by six pounds, which is exactly the output nothing downstream can
+    catch.
+
+    Deliberately a *majority*, where the statement parser
+    (`verdict.detect_decimal_separator`) refuses on any disagreement at all.
+    The two are asking different questions. A CSV that mixes conventions is a
+    genuinely ambiguous file and the honest answer is to stop. A photograph
+    that mixes them is one document that was read imperfectly, and stopping on
+    every receipt with one smudged mark would refuse most real photographs.
+    """
+    counts = {".": 0, ",": 0}
+    for line in lines:
+        for match in _AMOUNT.finditer(line):
+            if line[match.end():match.end() + 1] == "%":
+                continue
+            counts[match.group(2)] += 1
+    dots, commas = counts["."], counts[","]
+    if dots + commas < _MARK_MINIMUM:
+        return ""
+    if dots > commas:
+        return "."
+    if commas > dots:
+        return ","
+    return ""                            # a tie says nothing, and says it quietly
+
+
+def _amounts_in(line: str, mark: str = ""):
     """
     Every money-shaped number on a line, as cents, left to right.
 
@@ -112,15 +165,38 @@ def _amounts_in(line: str):
 
     "TAX 8.25%" is on almost every receipt printed in the United States, so
     this had a very long reach and only a photograph could have shown it.
+
+    `mark` is the decimal mark the rest of the receipt uses. An amount written
+    with the other one is dropped rather than read, because on a document that
+    prints one way it is a misreading. Dropping it costs the field, which is
+    the right price: the field becomes *unchecked* instead of confidently wrong.
     """
     out = []
     for match in _AMOUNT.finditer(line):
         after = line[match.end():match.end() + 1]
         if after == "%":
             continue
+        if mark and match.group(2) != mark:
+            continue
         whole = match.group(1).replace(",", "").replace(" ", "")
-        out.append(cents(f"{whole}.{match.group(2)}"))
+        out.append(cents(f"{whole}.{match.group(3)}"))
     return [a for a in out if a is not None]
+
+
+#: "TOTAL INCLUDES VAT OF   1.77" is a sentence about the tax that happens to
+#: begin with the word TOTAL. It is printed on VAT-inclusive receipts across
+#: most of the world, and it was read as the total -- worse, as a *later* total,
+#: which by the rule below beats the real one. A photographed receipt from Papua
+#: New Guinea reported a total of 1.77 against a charge of 19.50.
+#:
+#: The tell is a word of inclusion sitting next to a tax word. "TOTAL" with
+#: "INCLUDES" and "VAT" on the same line states the tax; the amount is the tax
+#: amount, and labelling it as such is not a workaround but the correct reading.
+_INCLUSIVE_TAX = re.compile(
+    r"\b(includes?|incl|inclusive|einschl|inkl|whereof|of which|dont)\b"
+    r"[^a-z]*\b(vat|tax|gst|hst|tva|mwst|ust|btw|iva|moms|alv|qst)\b"
+    r"|\b(vat|tax|gst|hst|tva|mwst|ust|btw|iva|moms|alv|qst)\b[^a-z]*"
+    r"\b(included|inclusive)\b")
 
 
 def _label_on(line: str):
@@ -133,6 +209,8 @@ def _label_on(line: str):
     reading that produces a clean verdict, which is the worst kind.
     """
     lowered = re.sub(r"[^a-z ]", " ", line.lower())
+    if _INCLUSIVE_TAX.search(lowered):
+        return "tax"
     best = None
     for field, labels in _LABELS.items():
         for label in labels:
@@ -186,6 +264,9 @@ def extract(text: str, ocr_lines=None, degraded: bool = False) -> dict:
     """
     lines = [l.rstrip() for l in (text or "").splitlines()]
     boxes = _boxes_by_line(ocr_lines)
+    # Established once over the whole receipt, before any field is read, because
+    # it is a fact about the document rather than about a line.
+    mark = _decimal_mark(lines)
     fields = {}
     subtotal_at = None
 
@@ -193,7 +274,7 @@ def extract(text: str, ocr_lines=None, degraded: bool = False) -> dict:
         if not line.strip():
             continue
         label = _label_on(line)
-        amounts = _amounts_in(line)
+        amounts = _amounts_in(line, mark)
         if not label or not amounts:
             continue
         # The rightmost amount on a labelled line: receipts print
@@ -214,14 +295,14 @@ def extract(text: str, ocr_lines=None, degraded: bool = False) -> dict:
             subtotal_at = number
 
     if "total" not in fields:
-        fields["total"] = _infer_total(lines, boxes)
+        fields["total"] = _infer_total(lines, boxes, mark)
         if degraded:
             fields["total"].confidence = min(fields["total"].confidence, GUESSED)
 
     return {
         "fields": fields,
-        "lines": _line_items(lines, subtotal_at),
-        "merchant": _merchant(lines),
+        "lines": _line_items(lines, subtotal_at, mark),
+        "merchant": _merchant(lines, mark),
         "currency": _currency(text),
         "text_lines": lines,
         "needs_human": sorted(name for name, f in fields.items()
@@ -229,7 +310,7 @@ def extract(text: str, ocr_lines=None, degraded: bool = False) -> dict:
     }
 
 
-def _merchant(lines):
+def _merchant(lines, mark: str = ""):
     """
     The name printed at the top, which is what the receipt says it is.
 
@@ -243,7 +324,7 @@ def _merchant(lines):
     """
     for line in lines[:6]:
         stripped = line.strip()
-        if not stripped or _amounts_in(line) or _label_on(line):
+        if not stripped or _amounts_in(line, mark) or _label_on(line):
             continue
         # At least two letters. A row of hashes or asterisks is a scanning
         # artefact, not a shop, and returning it as the merchant name gives the
@@ -254,7 +335,7 @@ def _merchant(lines):
     return ""
 
 
-def _infer_total(lines, boxes=None) -> Field:
+def _infer_total(lines, boxes=None, mark: str = "") -> Field:
     """
     No line said TOTAL. The largest amount in the last third is the usual
     answer and it is usually right, which is exactly why it is not trusted:
@@ -263,7 +344,7 @@ def _infer_total(lines, boxes=None) -> Field:
     tail = list(enumerate(lines))[max(0, len(lines) * 2 // 3):]
     best = None
     for number, line in tail:
-        for amount in _amounts_in(line):
+        for amount in _amounts_in(line, mark):
             if best is None or amount > best[0]:
                 best = (amount, number, line)
     if best is None:
@@ -273,7 +354,7 @@ def _infer_total(lines, boxes=None) -> Field:
                  box=(boxes or {}).get(best[1]))
 
 
-def _line_items(lines, subtotal_at):
+def _line_items(lines, subtotal_at, mark: str = ""):
     """
     The priced rows above the subtotal.
 
@@ -289,7 +370,7 @@ def _line_items(lines, subtotal_at):
     for number, line in enumerate(lines[:subtotal_at]):
         if _label_on(line):
             continue
-        amounts = _amounts_in(line)
+        amounts = _amounts_in(line, mark)
         if not amounts:
             continue
         description = _AMOUNT.sub("", line).strip(" .-\t")

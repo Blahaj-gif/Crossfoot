@@ -53,16 +53,37 @@ def _read_image(case, degradation, tmp_path):
 
 
 def _mistakes(case, extracted, parsed):
-    out = []
+    """
+    (misread, missing) — and the distinction is the whole point.
+
+    *Misread* is a field the tool recorded a number for, and the number is not
+    what the paper says. That is the harm: a wrong figure in a ledger that
+    claims to be checked.
+
+    *Missing* is a field the tool declined to record. It puts no number
+    anywhere, so nothing downstream can be wrong about it; the receipt is less
+    complete and no charge is misstated.
+
+    These were counted as one thing until a photograph made the difference
+    matter. A receipt reading "DISCOUNT 16,02" -- a comma, on a receipt that
+    prints points everywhere else -- had the comma refused, so the discount was
+    dropped and every number that survived was correct. Counting that as
+    equivalent to recording 16.02 would have argued for reading it.
+
+    Both are returned and both are reported. Only the first is asserted on.
+    """
+    misread, missing = [], []
     for field in FIELDS:
         if field not in case["expect"]:
             continue
         want = case["expect"][field]
         got = parsed.get(field)
         got = None if got is None else int(got)
-        if got != want:
-            out.append(f"{field}={got} not {want}")
-    return out
+        if got == want:
+            continue
+        (missing if got is None else misread).append(
+            f"{field}={got} not {want}")
+    return misread, missing
 
 
 def _measure(degradation, tmp_path):
@@ -70,12 +91,14 @@ def _measure(degradation, tmp_path):
     exact, wrong, silent = 0, [], []
     for case in CASES:
         _, extracted, parsed = _read_image(case, degradation, tmp_path)
-        mistakes = _mistakes(case, extracted, parsed)
-        if not mistakes:
+        misread, missing = _mistakes(case, extracted, parsed)
+        if not misread and not missing:
             exact += 1
             continue
-        wrong.append((case["name"], mistakes))
+        wrong.append((case["name"], misread + missing))
 
+        if not misread:
+            continue                        # nothing wrong was written down
         if parsed.get("total") is None:
             continue                        # unreadable is not a silent pass
 
@@ -94,7 +117,7 @@ def _measure(degradation, tmp_path):
         result = V.reconcile(parsed, {"amount": V.Cents(-abs(int(truth))),
                                       "date": "2026-08-06"})
         if result["verdict"] == V.RECONCILED:
-            silent.append((case["name"], mistakes))
+            silent.append((case["name"], misread))
     return exact, wrong, silent
 
 
@@ -106,6 +129,11 @@ def test_the_corpus_photographed(degradation, tmp_path, capsys):
     Only the silent-pass count is asserted, and only at zero. Field accuracy is
     reported rather than gated: a threshold picked before any real photograph
     has been measured would be a number invented to be met.
+
+    A silent pass is a field *recorded wrongly* on a receipt that reconciles.
+    A field the tool refused to record is counted against accuracy, printed,
+    and not asserted on, because refusing puts no number in anybody's ledger --
+    which is the whole mechanism by which this stays at zero.
     """
     exact, wrong, silent = _measure(degradation, tmp_path)
 

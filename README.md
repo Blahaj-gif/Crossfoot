@@ -210,30 +210,74 @@ reconciles on a wrong reading.
 | blurred | 15 / 22 | **0** |
 | JPEG at quality 30 | 15 / 22 | **0** |
 | rotated | 13 / 22 | **0** |
-| low resolution | 2 / 22 | **0** |
+| low resolution | 12 / 22 | **0** |
 | **all of it at once** | 1 / 22 | **0** |
 
-The second column is the only one that is asserted. Tesseract misreads digits:
-a zero becomes an eight, a `0.50` becomes `Q.50`. It happens on a quarter of
-these receipts and, across eleven kinds of damage, **not once does a misread
-come out reconciled**. The tool is not promising to read your receipt
-perfectly. It is promising to tell you when it did not.
+The second column is the only one that is asserted, and it means something
+narrower than it used to: a field the tool **recorded a number for** where the
+number is not what the paper says. A field it declined to record is counted
+against the first column, printed, and not asserted on — refusing puts no
+figure in anybody's ledger, and that is the entire mechanism by which the
+second column stays at zero. The two were counted as one thing until a
+photograph made the difference matter.
 
-Two things make that hold. The bank statement is a CSV, so OCR cannot corrupt
+Tesseract misreads digits: a zero becomes an eight, a `0.50` becomes `Q.50`. It
+happens on a quarter of these receipts and, across eleven kinds of damage,
+**not once does a wrong figure come out reconciled**. The tool is not promising
+to read your receipt perfectly. It is promising to tell you when it did not.
+
+Three things make that hold. The bank statement is a CSV, so OCR cannot corrupt
 it, and a receipt misread even *consistently* still fails against a number that
-was never photographed. And a photograph the engine could not make out is
-refused as a whole rather than mined for whichever fields happened to survive.
+was never photographed. A photograph the engine could not make out is refused
+as a whole rather than mined for whichever fields happened to survive. And a
+receipt has one decimal mark — an amount printed with the other one has been
+misread, and is dropped rather than believed.
 
-The last two rows are the honest bad news: **a low-resolution photograph does
-not work, and a badly degraded one does not work at all.** They come back
-unchecked with a reason, which is the correct answer and not a useful one. If
-your receipts arrive as phone photographs taken at a distance, this is not
-ready for you yet.
+Low resolution used to read 2 of 22. A phone at arm's length gives the engine
+fewer pixels per character than it needs, and below that density it stops
+reading letters and starts reading shapes: `TOTAL` as `oral`, `SUBTOTAL` as
+`susToTAL`. The amounts survive, because digits are simpler, and the labels do
+not — so no line has a label and a number on it. Reading such a page a second
+time, enlarged, takes it to 12. Enlarging *everything* was measured first and
+was a clear loss: accuracy fell on seven of the eleven and wrong figures
+appeared on nine, including on a clean render, because a second reading of an
+already-legible photograph is not a better reading, it is a different wrong one.
 
-**Still not a photograph of crumpled thermal paper.** These are rendered images
-of typed text with damage applied, which is a real test and is not the same
-thing. If you photograph a few real receipts and they come out wrong, that is
-the most useful bug report this project can receive.
+**All of it at once is still the honest bad news.** A badly degraded photograph
+comes back unchecked with a reason, which is the correct answer and not a
+useful one.
+
+### On real paper
+
+Six photographs of actual receipts, freely licensed, fetched with
+`python -m tests.corpus.photographs` and keyed by reading the paper: a Swiss
+restaurant bill on a wooden table, a 1988 Intershop slip that has been folded
+since 1988, a Korean receipt labelled entirely in Hangul, a Dutch one
+photographed with the total off the bottom of the frame, a VAT-inclusive
+receipt from Papua New Guinea, and a bank transfer confirmation that is not a
+till receipt at all.
+
+**Every one of them comes back unchecked. Not one wrong figure is recorded.**
+That is the safety property working exactly as designed, and it is also not a
+useful result: the tool checked nothing.
+
+They found two bugs that the rendered corpus structurally could not, which is
+the argument for having them:
+
+- A flat, sharp, entirely legible scan produced **zero words** at every page
+  segmentation mode. The receipt was lying on a blue desk mat, and Tesseract
+  binarises the whole frame against one threshold, so the mat decided where the
+  threshold fell and the ink landed on the wrong side of it. Finding the paper
+  and cropping to it takes the same file to 114 words at 71% confidence. A
+  rendered receipt is paper edge to edge and has no desk in it, so no amount of
+  damage applied to one could ever have shown this.
+- `TOTAL INCLUDES VAT OF   1.77` was read as the total, and by the rule that a
+  later `TOTAL` beats an earlier one it overwrote the real one. The receipt
+  reported a total of 1.77 against a charge of 19.50. That phrasing is printed
+  on VAT-inclusive receipts across most of the world.
+
+If you photograph a few of your own receipts and they come out wrong, that is
+still the most useful bug report this project can receive.
 
 ## The wall
 

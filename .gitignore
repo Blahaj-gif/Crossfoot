@@ -29,3 +29,11 @@ crossfoot-inbox/
 *.jsonl
 receipts/
 statements/
+
+# Photographs of real paper, fetched on purpose by `python -m
+# tests.corpus.photographs`. They are freely licensed, so mirroring them would
+# be permitted -- but several megabytes of JPEG in a repository whose whole
+# claim is that it has no required dependencies is a poor trade, and the
+# manifest carries the URL, the licence and the hand-keyed truth, which is the
+# part that took the work.
+tests/corpus/photographs/

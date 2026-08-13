@@ -209,8 +209,137 @@ def read_image(path: str) -> dict:
 PSM = os.getenv("CROSSFOOT_TESSERACT_PSM", "6").strip() or "6"
 
 
-def _read_with_tesseract(path):          # pragma: no cover - needs the binary
-    data = pytesseract.image_to_data(Image.open(path), config=f"--psm {PSM}",
+#: Below this many pixels of character height the engine stops reading letters
+#: and starts reading shapes: TOTAL as "oral", TAX as "TAK", SUBTOTAL as
+#: "susToTAL". The *amounts* survive, because digits are simpler, but the
+#: labels do not -- so no line has a label and a number on it and every field
+#: comes back empty. That is a phone held at arm's length, and on the corpus at
+#: 45% scale it is 2 receipts read exactly out of 22.
+#:
+#: The trigger is character height rather than page width, and that distinction
+#: is the whole of what makes this safe. A width rule was measured first and it
+#: was a clear loss: enlarging every image below 1000px wide cost accuracy on
+#: seven of the eleven degradations and produced silent passes on nine of them,
+#: including on a clean render, because a second reading of an image that was
+#: already legible is not a better reading -- it is a *different* wrong one, and
+#: a wrong reading that is self-consistent reconciles. Height separates the two
+#: populations without being fitted to them: the ten degradations that read
+#: well sit at 15-18px, and the two that fail sit at 8px.
+MINIMUM_HEIGHT = 11
+
+#: What to enlarge to. Also measured, and lower than Tesseract's own advice of
+#: about 30px, because more is not better here: the corpus reads best at the
+#: density it was already being read at, and pushing past it buys interpolation
+#: artefacts rather than detail.
+TARGET_HEIGHT = 16
+
+#: A receipt occupying a corner of a 12-megapixel frame can report a tiny median
+#: height, and the scale that implies would ask Pillow for an image of some
+#: absurd size. Enlarging past this has never helped anything measured here.
+MAXIMUM_SCALE = 4.0
+
+
+#: How bright a pixel has to be, between the darkest and lightest of the frame,
+#: to count as paper rather than as the table the paper is on.
+PAPER_BRIGHTNESS = 0.72
+
+#: How much of a row has to be paper before the row is inside the document.
+PAPER_COVERAGE = 0.5
+
+#: Pulled *in* from the detected edge, not out. Measured, and the measurement
+#: was emphatic: a crop twenty pixels too generous left a sliver of the desk in
+#: frame, and a sliver was enough to take the same receipt from 121 words back
+#: to zero. The threshold Tesseract picks is global, so one dark edge poisons
+#: the whole page.
+PAPER_INSET = 0.015
+
+#: A detected region this close to the whole frame means the photograph is
+#: already all document, and cropping it would only shave the margins off a
+#: page that was never the problem.
+PAPER_LEAVE_ALONE = 0.95
+
+
+def _paper(grey):                        # pragma: no cover - needs Pillow
+    """
+    Where the document is in the frame, or None if the frame is all document.
+
+    A receipt on a desk is a bright region surrounded by something darker, and
+    Tesseract binarises the *whole image* against one threshold -- so the desk
+    decides where the threshold falls and the ink on the paper ends up on the
+    wrong side of it. This is not a small effect. A flat, sharp, entirely
+    legible scan of a receipt on a blue desk mat produced **zero words** at
+    every page segmentation mode; cropped to the paper it produced 114 words at
+    71% confidence. Nothing in the rendered corpus could have found that,
+    because a rendered receipt is paper edge to edge and has no desk in it.
+
+    Worked out on a thumbnail, because this asks where the paper is rather than
+    what it says. Returns None whenever the answer is not clear -- a photograph
+    with no contrast between document and background, or one that is already
+    all document -- since a crop that is merely plausible can cut the total off
+    the bottom of a receipt.
+    """
+    small = grey.copy()
+    small.thumbnail((400, 400), Image.BILINEAR)
+    width, height = small.size
+    if width < 20 or height < 20:
+        return None
+    pixels = small.load()
+
+    values = sorted(pixels[x, y] for y in range(height) for x in range(width))
+    floor, ceiling = values[len(values) // 20], values[-len(values) // 20]
+    if ceiling - floor < 40:
+        return None                      # nothing stands out from anything
+    cut = floor + (ceiling - floor) * PAPER_BRIGHTNESS
+
+    rows = [y for y in range(height)
+            if sum(pixels[x, y] > cut for x in range(width))
+            > width * PAPER_COVERAGE]
+    columns = [x for x in range(width)
+               if sum(pixels[x, y] > cut for y in range(height))
+               > height * PAPER_COVERAGE]
+    if not rows or not columns:
+        return None
+
+    scale = grey.width / width
+    inset = PAPER_INSET * max(grey.width, grey.height)
+    box = (max(0, int(columns[0] * scale + inset)),
+           max(0, int(rows[0] * scale + inset)),
+           min(grey.width, int((columns[-1] + 1) * scale - inset)),
+           min(grey.height, int((rows[-1] + 1) * scale - inset)))
+    if box[2] - box[0] < 50 or box[3] - box[1] < 50:
+        return None
+    area = (box[2] - box[0]) * (box[3] - box[1])
+    if area >= grey.width * grey.height * PAPER_LEAVE_ALONE:
+        return None
+    return box
+
+
+def _tesseract_words(path, scale):       # pragma: no cover - needs the binary
+    """
+    One reading of one image, optionally enlarged first, boxes in *file*
+    coordinates.
+
+    Dividing the boxes back down is not tidiness. Every box comes off the image
+    the engine read, and `crop` opens the image on disk -- so keeping the
+    enlarged coordinates would show a reviewer a patch of paper from somewhere
+    else on the receipt, confidently labelled as the total. The same applies to
+    the crop: the offset has to be added back or every rectangle points at the
+    wrong part of the page.
+    """
+    # Greyscale before anything else. Measured: handing Tesseract the RGB file
+    # of a Swiss restaurant receipt gave 162 words at 42% confidence, and the
+    # same file converted first gave 106 words at 56% -- fewer words because
+    # the extra ones were the wood grain of the table.
+    image = Image.open(path).convert("L")
+    box = _paper(image)
+    if box:
+        image = image.crop(box)
+    left, top = (box[0], box[1]) if box else (0, 0)
+
+    if scale != 1.0:
+        image = image.resize((round(image.width * scale),
+                              round(image.height * scale)), Image.LANCZOS)
+    data = pytesseract.image_to_data(image, config=f"--psm {PSM}",
                                      output_type=pytesseract.Output.DICT)
     words = []
     for index, text in enumerate(data["text"]):
@@ -223,10 +352,36 @@ def _read_with_tesseract(path):          # pragma: no cover - needs the binary
             confidence = -1.0
         if confidence < 0:
             continue                     # tesseract's marker for "not a word"
-        words.append(Word(text, confidence, data["left"][index], data["top"][index],
-                          data["width"][index], data["height"][index],
+        words.append(Word(text, confidence,
+                          left + round(data["left"][index] / scale),
+                          top + round(data["top"][index] / scale),
+                          round(data["width"][index] / scale),
+                          round(data["height"][index] / scale),
                           line=(data["block_num"][index], data["par_num"][index],
                                 data["line_num"][index])))
+    return words
+
+
+def _read_with_tesseract(path):          # pragma: no cover - needs the binary
+    """
+    Read it, and if the ink turns out to be too small to read, read it again.
+
+    The second pass is triggered by the first pass's own measurement of the
+    page, so the decision is a property of the image rather than of the answer.
+    That matters: choosing between two readings on which one *reconciles* would
+    be a machine for manufacturing silent passes.
+    """
+    words = _tesseract_words(path, 1.0)
+    if not words:
+        return _assemble(words, "tesseract", path)
+
+    heights = sorted(word.height for word in words)
+    median = heights[len(heights) // 2]
+    if 0 < median < MINIMUM_HEIGHT:
+        scale = min(TARGET_HEIGHT / median, MAXIMUM_SCALE)
+        # `or words` only for a second pass that read *nothing*, which is a
+        # failed reading rather than a worse one.
+        words = _tesseract_words(path, scale) or words
     return _assemble(words, "tesseract", path)
 
 

@@ -208,3 +208,123 @@ def test_a_priced_or_labelled_line_is_not_the_merchant():
 
 def test_a_receipt_with_no_header_names_nobody_rather_than_guessing():
     assert R.extract("TOTAL 14.00\n")["merchant"] == ""
+
+
+# --------------------------------------------------------------------------
+# One receipt, one decimal mark
+# --------------------------------------------------------------------------
+
+DOT_RECEIPT = """SPORTS OUTLET
+
+Trainers               60.00
+Socks                   8.00
+
+SUBTOTAL               68.00
+DISCOUNT               10.00
+TAX                     4.64
+TOTAL                  62.64
+"""
+
+
+def test_an_amount_using_the_other_decimal_mark_is_dropped_rather_than_read():
+    """
+    The silent pass a photograph found, and the reason this rule exists.
+
+    A phone photograph of the receipt below came back with every amount intact
+    except the discount, which read "16,02" — a comma, on a receipt that prints
+    points. The total was right, the charge matched it, and no subtotal survived
+    to constrain the adjustments, so it reconciled carrying a discount wrong by
+    six pounds. Nothing downstream can catch that.
+
+    Dropping the field costs the discount. That is the right price: the receipt
+    becomes one with an unread field rather than one with a confident wrong one.
+    """
+    damaged = DOT_RECEIPT.replace("DISCOUNT               10.00",
+                                  "DISCOUNT               16,02")
+    parsed = R.as_receipt(R.extract(damaged))
+    assert "discount" not in parsed
+    assert int(parsed["total"]) == 6264
+
+
+def test_a_receipt_that_prints_commas_throughout_is_read_in_commas():
+    """The rule is about disagreement, not about preferring points."""
+    german = """KAUFLAND
+
+Brot                    2,50
+Milch                   1,20
+
+ZWISCHENSUMME           3,70
+MWST                    0,26
+SUMME                   3,96
+"""
+    parsed = R.as_receipt(R.extract(german))
+    assert int(parsed["subtotal"]) == 370
+    assert int(parsed["total"]) == 396
+
+
+def test_a_receipt_with_too_few_amounts_to_judge_decides_nothing():
+    """
+    Two amounts are not evidence of a convention. Refusing on that little would
+    throw away the commonest receipt there is: one line and a total.
+    """
+    assert R._decimal_mark(["TOTAL 14.00", "CASH 20,00"]) == ""
+
+
+def test_a_receipt_evenly_split_between_marks_decides_nothing():
+    """Ambiguous is a real answer, and quieter than picking a side."""
+    lines = ["A 1.00", "B 2.00", "C 3,00", "D 4,00"]
+    assert R._decimal_mark(lines) == ""
+
+
+def test_thousands_separators_do_not_vote_for_the_wrong_mark():
+    """
+    "1,234.56" is a point-decimal amount that contains a comma. Counting the
+    comma would make a receipt of large amounts look like a European one and
+    every amount on it would then be dropped.
+    """
+    lines = ["A 1,234.56", "B 2,000.00", "C 3,500.00"]
+    assert R._decimal_mark(lines) == "."
+
+
+# --------------------------------------------------------------------------
+# VAT that is inside the total rather than added to it
+# --------------------------------------------------------------------------
+
+def test_a_line_saying_the_total_includes_vat_is_not_the_total():
+    """
+    Found on a photograph of a real receipt from Lae, Papua New Guinea.
+
+    "TOTAL INCLUDES VAT OF   1.77" begins with the word TOTAL, and by the rule
+    that a later TOTAL beats an earlier one it overwrote the real total. The
+    receipt reported a total of 1.77 against a charge of 19.50 — a loud failure
+    rather than a silent one, and still wrong.
+
+    The line states the tax, so it is read as the tax.
+    """
+    text = """CHIN H. MEEN & SON'S LTD.
+
+Choking band            19.50
+
+TOTAL                   19.50
+Cash                    20.00
+CHANGE                   0.50
+TOTAL INCLUDES VAT OF    1.77
+"""
+    parsed = R.as_receipt(R.extract(text))
+    assert int(parsed["total"]) == 1950
+    assert int(parsed["tax"]) == 177
+
+
+def test_vat_inclusive_phrasing_in_other_languages_is_read_the_same_way():
+    """The phrasing is not an English idiom; the receipts it appears on are not
+    English either."""
+    assert R._label_on("Incl. 7.6% MwSt 54.50 CHF: 3.85") == "tax"
+    assert R._label_on("Gesamt inkl. MwSt 3,85") == "tax"
+    assert R._label_on("Totaal incl. BTW 2,10") == "tax"
+
+
+def test_an_ordinary_total_line_is_still_a_total():
+    """The guard must not eat the thing it sits next to."""
+    assert R._label_on("TOTAL                   19.50") == "total"
+    assert R._label_on("TOTAL DUE               19.50") == "total"
+    assert R._label_on("TAX                      1.77") == "tax"
