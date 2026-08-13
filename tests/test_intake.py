@@ -156,6 +156,53 @@ def test_neither_inbox_nor_statement_is_an_error_not_a_traceback(capsys):
         cli.main(["check"])
 
 
+def test_no_arguments_opens_the_window(monkeypatch):
+    """
+    For most of the people this is for, a page of usage text *is* the failure:
+    they came to look at their receipts, not to learn a flag.
+
+    Patched, because the real call starts a server and blocks — which is
+    exactly what it should do for a person and exactly what hung the test
+    suite, and CI with it, the moment this behaviour landed.
+    """
+    opened = []
+    monkeypatch.setattr(cli, "review", lambda argv: opened.append(argv) or 0)
+    assert cli.main([]) == 0
+    assert opened == [[]]
+
+
+def test_no_arguments_without_the_window_explains_rather_than_hangs(monkeypatch, capsys):
+    import builtins
+
+    real = builtins.__import__
+
+    def refuse(name, *a, **k):
+        if name == "streamlit":
+            raise ImportError("absent")
+        return real(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", refuse)
+    assert cli.main([]) == 1
+    message = capsys.readouterr().err
+    assert "crossfoot[ui]" in message
+    assert "crossfoot check" in message      # the way through without the window
+
+
+def test_help_is_still_reachable_for_anyone_who_wants_it(capsys):
+    for flag in ("--help", "-h", "help"):
+        assert cli.main([flag]) == 0
+        assert "crossfoot doctor" in capsys.readouterr().out
+
+
+def test_doctor_says_what_works_before_anything_breaks(capsys):
+    assert cli.main(["doctor"]) == 0
+    said = capsys.readouterr().out
+    assert "What works on this machine" in said
+    # The thing that works with nothing installed leads the good news, because
+    # it is the reason to keep going on a bare machine.
+    assert "billed twice" in said
+
+
 # --------------------------------------------------------------------------
 # Photographs
 # --------------------------------------------------------------------------
@@ -304,8 +351,8 @@ def test_the_usage_screen_names_every_command_and_leads_with_the_easy_one(capsys
     adding one and forgetting the help is a failing test rather than a user
     who never finds the feature.
     """
-    cli.main([])
-    usage = capsys.readouterr().err
+    cli.main(["--help"])
+    usage = capsys.readouterr().out
     for command in ("check", "review", "export"):
         assert command in usage, command
     for target in ("generic", "actual", "firefly", "beancount"):

@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 
+from crossfoot import doctor as DOC
 from crossfoot.export import rows as E
 from crossfoot.export import targets as T
 from crossfoot.ingest import inbox as I
@@ -198,32 +199,58 @@ def _survive_a_narrow_console():
 def main(argv=None) -> int:
     _survive_a_narrow_console()
     argv = list(sys.argv[1:] if argv is None else argv)
+
     if argv and argv[0] == "review":
         return review(argv[1:])
     if argv and argv[0] == "check":
         return check(argv[1:])
     if argv and argv[0] == "export":
         return export(argv[1:])
-    # The one screen a confused person is guaranteed to see, so it leads with
-    # the easy path. It told them to name two paths on the command line for a
-    # week after the one-folder intake shipped, because a patch silently failed
-    # to apply and nothing tested this text.
-    print(
-        "Crossfoot — check your receipts against your bank statement.\n"
+    if argv and argv[0] == "doctor":
+        print(DOC.render())
+        return 0
+    if argv and argv[0] in ("-h", "--help", "help"):
+        print(_usage())
+        return 0
+
+    # No arguments opens the window, because for most of the people this is
+    # for, a page of usage text *is* the failure -- they came to look at their
+    # receipts, not to learn a flag. Anyone who wanted the command line typed a
+    # subcommand and never reaches here.
+    try:
+        import streamlit                    # noqa: F401
+    except ImportError:
+        print("Crossfoot needs one more piece to open its window:\n"
+              "    pip install 'crossfoot[ui]'\n\n"
+              "Or use it from the command line:\n" + _usage(), file=sys.stderr)
+        return 1
+    return review(argv)
+
+
+def _usage() -> str:
+    """
+    The screen a confused person sees. It leads with the easy path, and every
+    subcommand and export target appears in it -- there is a test, because it
+    once told people to name two paths on the command line for a week after
+    the one-folder intake shipped.
+    """
+    return (
+        "Crossfoot - check your receipts against your bank statement.\n"
         "\n"
-        "  Put the bank export and the receipts in one folder, then:\n"
+        "  crossfoot                             open the window (does everything)\n"
+        "  crossfoot doctor                      what this computer can read\n"
         "\n"
-        "    crossfoot check  --inbox ./inbox      what does not add up\n"
-        "    crossfoot review --inbox ./inbox      look at it and decide\n"
+        "  Or from the command line, with one folder holding both:\n"
+        "\n"
+        "    crossfoot check  --inbox ./inbox    what does not add up\n"
+        "    crossfoot review --inbox ./inbox    the window, on that folder\n"
         "    crossfoot export --inbox ./inbox --to actual --out ledger.csv\n"
         "\n"
         "  Which file is the statement is worked out by reading them, so it\n"
         "  does not matter what they are called.\n"
         "\n"
         "  --to    generic | actual | firefly | beancount\n"
-        "  If you keep them apart: --statement FILE --receipts DIR",
-        file=sys.stderr)
-    return 2
+        "  If you keep them apart: --statement FILE --receipts DIR")
 
 
 if __name__ == "__main__":                  # pragma: no cover

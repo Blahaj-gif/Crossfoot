@@ -162,8 +162,18 @@ def test_an_export_that_cannot_be_checked_for_completeness_says_so(tmp_path, cap
     assert "cannot confirm it is whole" in out or "confirm it is whole" in out
 
 
-def test_no_arguments_prints_usage_rather_than_a_traceback(capsys):
-    assert cli.main([]) == 2
+def test_no_arguments_opens_the_window_rather_than_printing_usage(monkeypatch):
+    """
+    Changed deliberately: for most of the people this is for, a page of usage
+    text *is* the failure. `--help` still prints it for anyone who wants it.
+
+    `review` is patched because the real one starts a server and blocks — which
+    is right for a person and is what hung the whole test suite, and would have
+    hung CI, the moment this behaviour landed.
+    """
+    monkeypatch.setattr(cli, "review", lambda argv: 0)
+    assert cli.main([]) == 0
+    assert cli.main(["--help"]) == 0
 
 
 def test_the_checking_layer_imports_nothing_optional():

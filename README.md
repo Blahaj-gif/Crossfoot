@@ -28,7 +28,7 @@ here is a liability, not a result, and it is never counted as clean.
 
 | | Built | Refuses to |
 |---|---|---|
-| 1 | **Drop** — one folder. Put the bank export and the receipts in it and point Crossfoot at it; which file is which is decided by *reading* them. A watch loop and drag-and-drop in the reviewer do the same thing. | accept a statement whose own running balance does not step correctly row to row, or whose rows do not sum to its declared period total: that export is truncated, and every verdict downstream would rest on a partial ledger. |
+| 1 | **Drop** — drag the bank export and the receipts into the window, or into one folder. Which file is which is decided by *reading* them, so their names do not matter. | accept a statement whose own running balance does not step correctly row to row, or whose rows do not sum to its declared period total: that export is truncated, and every verdict downstream would rest on a partial ledger. |
 | 2 | **Read** — Docling for PDFs, Tesseract or EasyOCR for photographs, plain text otherwise. Every field keeps its confidence, the line it came from, and — from a photograph — the rectangle on the page. | use a total it read below threshold. It names the field and shows you the crop of the actual paper it was read from. |
 | 3 | **Match** — amount, date window, merchant string. Fuzzy on the name, exact on the cents. | auto-resolve a tie. A guess that looks like a match is worse than a gap that looks like a gap. |
 | 4 | **Crossfoot** — the four checks. | widen a tolerance far enough to hide a magnitude error. Rounding gets cents; nothing gets a percent. |
@@ -41,14 +41,39 @@ them.
 
 ## Status
 
-All six steps exist. 392 tests.
+All six steps exist. 401 tests.
+
+### If you would rather not use a terminal
+
+Download this repository, then **double-click** `launch/crossfoot.bat`
+(Windows), `launch/crossfoot.command` (macOS) or `launch/crossfoot.sh` (Linux).
+The first run sets itself up and takes a minute; every run after opens the
+window. You still need Python installed — the script says so and points you at
+python.org if you do not.
+
+They are ordinary text files you can read before running them, on purpose.
+This program reads your bank statements; a script you can open in Notepad is a
+better thing to trust than a downloaded binary, and it is why there is no
+`.exe` here.
+
+### The window
 
 ```
-pip install -e ".[dev]"
-pytest
+crossfoot            opens it, and it does everything:
+                     drop the files in, see what does not add up,
+                     decide, and download the result
+crossfoot doctor     what this computer can read, and how to fix what it cannot
+```
+
+Nothing is uploaded. The window is a page served by your own machine to your
+own browser.
+
+### From the command line, if you prefer
+
+```
+pip install -e ".[dev]" && pytest
 
 crossfoot check  --inbox ./inbox                      # read-only
-crossfoot review --inbox ./inbox                      # the only way to decide
 crossfoot export --inbox ./inbox --to actual --out ledger.csv
 
 # --statement FILE --receipts DIR still works if you keep them apart
