@@ -10,9 +10,15 @@ import os
 import subprocess
 import sys
 
+from crossfoot.export import rows as E
+from crossfoot.export import targets as T
 from crossfoot.ingest import statement as S
 from crossfoot.match import candidates as M
 from crossfoot.read import document, receipt as R
+# The *reader* of the decision log, which cannot write one. `export` needs to
+# know which discrepancies a person accepted; importing the writer to find out
+# would put `record` one attribute away from every consumer of this module.
+from crossfoot.review import ledger as D
 from crossfoot.review import queue as Q
 
 
@@ -47,6 +53,47 @@ def _receipts_in(directory: str):
     return receipts, unreadable
 
 
+class Refused(Exception):
+    """The inputs cannot be used. Carries the exit code the caller should give."""
+
+    def __init__(self, message, code=2):
+        super().__init__(message)
+        self.code = code
+
+
+def _load(statement_path, receipts_dir):
+    """
+    Statement plus receipts, or a refusal. Shared so that `export` cannot come
+    to a different conclusion from `check` about the same two files -- an
+    exporter that is more permissive than the checker is an exporter that
+    writes a ledger the checker would not stand behind.
+    """
+    try:
+        with open(statement_path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError as e:
+        raise Refused(f"Cannot read {statement_path}: {e.strerror}.")
+
+    try:
+        parsed = S.parse(text, statement_path)
+    except S.StatementError as e:
+        raise Refused(f"This statement cannot be used:\n  {e}")
+
+    acceptance = S.accept(parsed)
+    if not acceptance["usable"]:
+        raise Refused(
+            "This statement is not complete, so nothing below it can be trusted:\n"
+            + "\n".join(f"  {p}" for p in acceptance["problems"]))
+
+    receipts, unreadable = _receipts_in(receipts_dir)
+    charges = [{"amount": l["amount"], "description": l["description"],
+                "date": l["date"], "currency": parsed.get("currency")}
+               for l in parsed["lines"]]
+    return {"parsed": parsed, "acceptance": acceptance, "receipts": receipts,
+            "unreadable": unreadable, "charges": charges,
+            "built": Q.build(M.match_all(receipts, charges))}
+
+
 def check(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="crossfoot check")
     parser.add_argument("--statement", required=True)
@@ -54,39 +101,18 @@ def check(argv=None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        with open(args.statement, encoding="utf-8", errors="replace") as fh:
-            text = fh.read()
-    except OSError as e:
-        # A mistyped path is the commonest first run and it answered with a
-        # traceback, which reads as broken software rather than a typo.
-        print(f"Cannot read {args.statement}: {e.strerror}.", file=sys.stderr)
-        return 2
+        loaded = _load(args.statement, args.receipts)
+    except Refused as e:
+        print(str(e), file=sys.stderr if "Cannot read" in str(e) else sys.stdout)
+        return e.code
 
-    try:
-        parsed = S.parse(text, args.statement)
-    except S.StatementError as e:
-        # Refusals are the point of the ingest step, not a crash. They carry
-        # the reason and what to do about it, so print the reason.
-        print(f"This statement cannot be used:\n  {e}")
-        return 2
-    acceptance = S.accept(parsed)
-    if not acceptance["usable"]:
-        print("This statement is not complete, so nothing below it can be trusted:")
-        for problem in acceptance["problems"]:
-            print(f"  {problem}")
-        return 2
-    if not acceptance["verified_complete"]:
+    if not loaded["acceptance"]["verified_complete"]:
         print("Note: this export carries neither a running balance nor a declared\n"
               "period total, so nothing here can confirm it is whole.\n")
-
-    receipts, unreadable = _receipts_in(args.receipts)
-    for name, why in unreadable:
+    for name, why in loaded["unreadable"]:
         print(f"unreadable: {name}: {why}")
 
-    charges = [{"amount": l["amount"], "description": l["description"],
-                "date": l["date"]} for l in parsed["lines"]]
-    built = Q.build(M.match_all(receipts, charges))
-
+    built = loaded["built"]
     print(built["headline"])
     print("-" * len(built["headline"]))
     for item in built["needs_you"]:
@@ -97,6 +123,66 @@ def check(argv=None) -> int:
     # A non-zero exit for anything a person still has to look at, so this can be
     # a step in something larger without the caller parsing prose.
     return 1 if built["needs_you"] else 0
+
+
+def export(argv=None) -> int:
+    """
+    Write the ledger, verdict attached, for a target's own importer to read.
+
+    Reads the decision log so that a discrepancy a person looked at and
+    accepted leaves as `accepted-by-you` rather than being flattened into
+    either neighbour — but never *writes* to it, which is why this lives here
+    and not in the reviewer.
+    """
+    parser = argparse.ArgumentParser(prog="crossfoot export")
+    parser.add_argument("--statement", required=True)
+    parser.add_argument("--receipts", default="receipts")
+    parser.add_argument("--decisions", default="decisions.jsonl")
+    parser.add_argument("--to", default="generic", choices=sorted(T.TARGETS))
+    parser.add_argument("--out", help="output file; stdout when omitted")
+    parser.add_argument("--account", default="",
+                        help="firefly: the asset account id these belong to")
+    args = parser.parse_args(argv)
+
+    try:
+        loaded = _load(args.statement, args.receipts)
+    except Refused as e:
+        print(str(e), file=sys.stderr)
+        return e.code
+
+    try:
+        decided = D.read_all(args.decisions)
+    except D.TamperedLog as e:
+        # Not a warning. The log is what says which discrepancies a person
+        # accepted, and exporting against a log that cannot be trusted writes
+        # somebody's ledger from a record somebody edited.
+        print(f"Refusing to export: {e}", file=sys.stderr)
+        return 2
+    except OSError:
+        decided = []
+
+    built = loaded["built"]
+    rows = E.rows_for(built["needs_you"] + built["filed_items"], decided)
+    rendered = T.TARGETS[args.to]["render"](rows)
+
+    if not args.out:
+        sys.stdout.write(rendered)
+    else:
+        with open(args.out, "w", encoding="utf-8", newline="") as fh:
+            fh.write(rendered)
+        # Firefly's importer wants a column mapping, and doing it by hand is
+        # twenty dropdowns the first time and twenty again next month.
+        if args.to == "firefly":
+            config = os.path.splitext(args.out)[0] + ".json"
+            with open(config, "w", encoding="utf-8") as fh:
+                fh.write(T.firefly_config(args.account))
+            print(f"wrote {args.out} and {config}", file=sys.stderr)
+        else:
+            print(f"wrote {args.out}", file=sys.stderr)
+
+    print(E.summary(rows), file=sys.stderr)
+    print(T.TARGETS[args.to]["note"], file=sys.stderr)
+    return 0
 
 
 def review(argv=None) -> int:
@@ -139,8 +225,13 @@ def main(argv=None) -> int:
         return review(argv[1:])
     if argv and argv[0] == "check":
         return check(argv[1:])
-    print("usage: crossfoot check --statement FILE [--receipts DIR]\n"
-          "       crossfoot review --statement FILE [--receipts DIR]", file=sys.stderr)
+    if argv and argv[0] == "export":
+        return export(argv[1:])
+    print("usage: crossfoot check  --statement FILE [--receipts DIR]\n"
+          "       crossfoot export --statement FILE [--receipts DIR]\n"
+          "                        [--to generic|actual|firefly|beancount] [--out FILE]\n"
+          "       crossfoot review --statement FILE [--receipts DIR]",
+          file=sys.stderr)
     return 2
 
 

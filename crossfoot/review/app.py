@@ -21,7 +21,7 @@ from crossfoot import verdict as V
 from crossfoot.ingest import statement as S
 from crossfoot.match import candidates as M
 from crossfoot.read import document, receipt as R
-from crossfoot.review import decisions as D
+from crossfoot.review import decisions as D  # the write path; this file only
 from crossfoot.review import queue as Q
 
 

@@ -29,7 +29,7 @@ crossfoot = "crossfoot.cli:main"
 # Subpackages are not implied by naming the parent. Naming only "crossfoot"
 # ships a wheel with ingest/, read/, match/ and review/ missing entirely.
 packages = ["crossfoot", "crossfoot.ingest", "crossfoot.read",
-            "crossfoot.match", "crossfoot.review"]
+            "crossfoot.match", "crossfoot.review", "crossfoot.export"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -40,7 +40,7 @@ Budget — 52,000 stars between them and no receipt story at all. It feeds them.
 
 ## Status
 
-All six steps exist. 145 tests.
+All six steps exist. 341 tests.
 
 ```
 pip install -e ".[dev]"
@@ -48,6 +48,7 @@ pytest
 
 crossfoot check  --statement bank.csv --receipts ./receipts   # read-only
 crossfoot review --statement bank.csv --receipts ./receipts   # the only way to decide
+crossfoot export --statement bank.csv --receipts ./receipts --to actual --out ledger.csv
 ```
 
 `check` exits 0 when nothing is outstanding, 1 when something needs a person,
@@ -63,6 +64,38 @@ unverified        104.20  2026-08-09  SUNRISE CAFE SF
             no receipt is matched to this charge
 ```
 
+## Into the tool you already use
+
+Crossfoot is not a budgeting app and has no intention of becoming one. It hands
+the verdict to whatever you already run, attached to the transaction, where it
+will still be legible next April.
+
+| `--to` | What you get |
+|---|---|
+| `actual` | **Actual Budget**'s importer: Date / Payee / Notes / Amount. The verdict arrives as `#crossfoot-unchecked` in the note, because Actual reads hashtags out of notes and a verdict written as prose is one nobody can filter on. |
+| `firefly` | **Firefly III**'s data importer, with tags as a real column — plus a `.json` beside the CSV holding the column mapping, so it is not twenty dropdowns the first time and twenty again next month. |
+| `beancount` | Plain-text accounting. Unreconciled entries carry beancount's own `!` flag, so `bean-check` surfaces them without anyone remembering a tag. |
+| `generic` | A plain CSV with every check that ran. Open it in anything. |
+
+```
+2026-08-14 ! "HOME DEPOT #4471"
+  crossfoot-verdict: "crossfoot:does-not-reconcile"
+  crossfoot-why: "1 line items sum to 791.44; the receipt prints a subtotal of 797.44"
+  crossfoot-receipt: "The_Home_Depot.txt"
+  Assets:Bank:Checking  -842.19 USD
+  Expenses:Unknown
+```
+
+Five verdicts leave, not three. `crossfoot:accepted-by-you` is its own state —
+a person looked at a discrepancy and made a call, and exporting that as either
+"reconciled" or "unchecked" would lose the only fact that matters about it.
+
+**Nothing here phones anything.** Every exporter writes a file the target's own
+importer reads. That is the property the project is for, not a limitation
+worked around: receipts and statements are the most sensitive documents most
+people own, and a tool that promises they never leave the machine should have
+no code capable of sending them. CI asserts the absence of the imports.
+
 Docling is an optional extra (`pip install 'crossfoot[read]'`). Without it,
 PDFs are read as plain text and every number from one is marked *degraded* in
 the queue rather than quietly used. The checking layer itself is arithmetic and
@@ -71,17 +104,32 @@ numbers they already have.
 
 ### What is deliberately not built
 
-Export (step 6) is designed but unwritten. `split` and `correct` are accepted as
-decisions and recorded, but nothing yet consumes them. There is no MCP server —
-when there is, it will import the queue and never `review/decisions.py`, which
-is the separation a test already enforces.
+`split` and `correct` are accepted as decisions and recorded, but nothing yet
+consumes them. There is no MCP server — when there is, it will import the queue
+and the *ledger reader*, never the writer, which is the separation CI already
+enforces.
+
+Nothing here has met a real receipt. Every fixture is text typed in the format
+this parser expected, which is a mirror rather than a test — so no accuracy
+claim is made, and the six defects an afternoon of attacking it produced are
+the reason that caveat is at the top rather than the bottom.
 
 ## The wall
 
-`crossfoot check`, the CLI, the matcher and the queue can all be handed to an
-assistant. None of them can clear a queue item: `review/decisions.py` is the
-only write path and `review/app.py` is its only importer, checked by a test
-that reads the import graph rather than trusting the convention.
+`crossfoot check`, `crossfoot export`, the matcher and the queue can all be
+handed to an assistant. None of them can clear a queue item.
+
+Reading the decision log and writing to it are two modules. `review/ledger.py`
+verifies and reads and contains no function that appends; `review/decisions.py`
+is the write path and `review/app.py` is its only importer. The split exists
+because the exporter genuinely needs to read the log — and if reading meant
+importing the writer, every consumer of the ledger would have `record` one
+attribute away and the boundary would be a convention again. CI reads the
+import graph on every push.
+
+It is a repository boundary, not a security one, and worth saying in the same
+breath: any process on this machine can import the writer and pass the string
+`"human"`. What makes that visible afterwards is the hash chain, not the split.
 
 Decisions append to `decisions.jsonl`, flushed and fsynced per click, each one
 carrying the numbers the person was actually shown. Re-read a document, get a

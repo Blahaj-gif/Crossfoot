@@ -98,6 +98,13 @@ def build(matches) -> dict:
 
     return {
         "needs_you": needs_you,
+        # Both, and they are not redundant. `filed` is a count because the
+        # review UI must not render 347 rows nobody has to look at -- a queue
+        # that shows everything is a queue nobody reads. `filed_items` exists
+        # because the *ledger* still needs them: a reconciled charge leaves the
+        # queue, it does not stop having happened, and exporting only the
+        # interesting ones hands somebody a ledger missing most of their money.
+        "filed_items": filed,
         "filed": len(filed),
         "unverified": len(unverified),
         "at_risk": sum(abs(i["at_risk"]) for i in needs_you),
