@@ -9,6 +9,14 @@ dist/
 # Everything a run produces. Receipts and statements are the most sensitive
 # documents this will ever touch and none of them belong in a repository.
 inbox/
+# The folder the window drops files into by default. It lives beside the code
+# because a person has to be able to open it, which means it sits inside a git
+# checkout -- so somebody who clones this, double-clicks the launcher and drops
+# their bank statement in would otherwise see it in `git status`, and one
+# `git add -A` publishes it. The sister project shipped a portfolio history to
+# PyPI exactly this way. Matched as a glob, not by name.
+crossfoot-inbox/
+*-inbox/
 *.sqlite
 *.sqlite3
 *.db

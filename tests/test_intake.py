@@ -421,3 +421,38 @@ def test_the_model_download_is_opt_in_and_the_message_says_what_it_costs():
     # across two lines, so it failed on prose that was present.
     assert "receipts are involved" in source
     assert "documents still never leave this" in source
+
+
+def test_the_drop_folder_refuses_to_be_committed(tmp_path):
+    """
+    The folder the window drops bank statements into lives inside a git
+    checkout, because a person has to be able to open it. So somebody who
+    clones this, double-clicks the launcher and drops a statement in would see
+    it in `git status`, and one `git add -A` publishes their bank statement.
+    The sister project shipped a portfolio history to PyPI exactly this way.
+
+    Two defences, and the second is not redundant: this repository ignores the
+    folder, and the folder ignores itself so it stays protected wherever it is
+    copied, moved or synced to.
+    """
+    from crossfoot.review import app
+
+    inbox = str(tmp_path / "crossfoot-inbox")
+    app._make_inbox(inbox)
+    guard = os.path.join(inbox, ".gitignore")
+    assert os.path.exists(guard)
+    assert open(guard, encoding="utf-8").read().strip().endswith("*")
+
+
+def test_the_repository_ignores_the_default_drop_folder():
+    import subprocess
+
+    from crossfoot.review import app
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    probe = os.path.join(app.DEFAULT_INBOX, "somebodys-bank-export.csv")
+    result = subprocess.run(["git", "check-ignore", "-q", probe],
+                            cwd=root, capture_output=True)
+    assert result.returncode == 0, (
+        f"{probe} is not ignored — a user's bank statement would appear in "
+        "git status")

@@ -132,6 +132,12 @@ def render() -> str:
             if capability.fix:
                 lines.append(f"        fix: {capability.fix}")
 
+    if not python_is_on_the_path():
+        lines.append("")
+        lines.append("Note: `crossfoot` is not on your PATH, so a fresh terminal")
+        lines.append("will not find it. Use the launcher in launch/, or run it as")
+        lines.append("`python -m crossfoot.cli`.")
+
     lines.append("")
     if can_do_anything_useful():
         lines.append("You can already drop a bank export in and find out whether")
@@ -140,13 +146,6 @@ def render() -> str:
     lines.append("")
     lines.append(f"python {sys.version.split()[0]} at {sys.executable}")
     return "\n".join(lines)
-
-
-def launcher_hint() -> str:
-    """Where the double-clickable launcher lives, if this install has one."""
-    return ("launch/crossfoot.bat" if sys.platform == "win32" else
-            "launch/crossfoot.command" if sys.platform == "darwin" else
-            "launch/crossfoot.sh")
 
 
 def python_is_on_the_path() -> bool:

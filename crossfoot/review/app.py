@@ -110,7 +110,7 @@ def _intake(inbox: str):
         help="Which file is the statement is worked out by reading them, so it "
              "does not matter what they are called.")
     for upload in dropped or []:
-        os.makedirs(inbox, exist_ok=True)
+        _make_inbox(inbox)
         target = os.path.join(inbox, upload.name)
         if not os.path.exists(target):
             with open(target, "wb") as fh:
@@ -120,6 +120,25 @@ def _intake(inbox: str):
     for name, why in found["ignored"]:
         st.caption(f"skipped `{name}` - {why}")
     return found
+
+
+def _make_inbox(inbox: str):
+    """
+    Create the drop folder, and make it refuse to be committed.
+
+    The `.gitignore` written inside it is not redundant with the one in this
+    repository. This folder ends up holding somebody's bank statements, and it
+    travels: people copy it, move it into a project, sync it. A folder that
+    ignores its own contents is protected wherever it lands, and the repository
+    rule only protects it here.
+    """
+    os.makedirs(inbox, exist_ok=True)
+    guard = os.path.join(inbox, ".gitignore")
+    if not os.path.exists(guard):
+        with open(guard, "w", encoding="utf-8") as fh:
+            fh.write("# Your bank statements and receipts are in here.\n"
+                     "# Nothing in this folder should ever be committed.\n"
+                     "*\n")
 
 
 def _first_run(inbox: str):
