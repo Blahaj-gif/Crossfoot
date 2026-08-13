@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Everything a run produces. Receipts and statements are the most sensitive
+# documents this will ever touch and none of them belong in a repository.
+inbox/
+*.sqlite
+*.sqlite3
+*.db
+.env

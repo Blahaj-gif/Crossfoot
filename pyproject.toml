@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crossfoot"
+version = "0.0.1"
+description = "Reconciles receipts against bank statements, and says so when it cannot"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+# Deliberately empty for now. The verdict layer is arithmetic and stdlib, and
+# it should stay installable by someone who only wants that. Docling, the OCR
+# stack and the dashboard belong in extras when they arrive.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["crossfoot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
