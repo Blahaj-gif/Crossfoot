@@ -44,6 +44,18 @@ def report() -> list:
     if photographs:
         photo_detail = f"reading photographs with {', '.join(engines)}"
         photo_fix = ""
+    elif ocr.IMPORT_ERROR:
+        # An installed engine that will not load. Reporting this as "not
+        # installed" -- which is what this did -- sends somebody to reinstall
+        # software that is already there and working, and `doctor` is precisely
+        # the command they run to be told the truth about their machine.
+        photo_detail = (f"the OCR engine is installed but will not load: "
+                        f"{ocr.IMPORT_ERROR}")
+        photo_fix = ("not a missing package; reinstalling will not help. Look "
+                     "for a file in the working directory named after a "
+                     "standard library module (select.py, socket.py, json.py), "
+                     "or a broken numpy/pandas. `python -c \"import "
+                     "pytesseract\"` shows the whole traceback.")
     elif ocr.HAVE_TESSERACT:
         photo_detail = ("pytesseract is installed but the tesseract program is "
                         "not — pip cannot install it, because it is not a "

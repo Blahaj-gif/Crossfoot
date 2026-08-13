@@ -30,13 +30,32 @@ import os
 
 #: Read once at import so the answer cannot change mid-run and produce two
 #: different readings of the same photograph in one session.
+#: Why the import failed, when it failed for a reason other than absence.
+#:
+#: This existed as a bare `except Exception: HAVE_TESSERACT = False`, and the
+#: consequence was measured the hard way. A file named `select.py` sitting in
+#: the working directory shadows the standard library's `select`, which breaks
+#: `socket`, which breaks `pandas`, which pytesseract imports -- so the import
+#: raised, the flag went False, and Crossfoot told somebody with a working
+#: Tesseract installation to go and install Tesseract. The engine was present,
+#: on PATH, and functioning.
+#:
+#: An absent package and a broken one need different sentences. Guessing
+#: "absent" for both sends people to reinstall what they already have, and it
+#: is the tool being confidently wrong about a fact it could simply report.
+IMPORT_ERROR = None
+
 try:                                        # pragma: no cover - environment
     import pytesseract
     from PIL import Image
     HAVE_TESSERACT = True
-except Exception:                           # pragma: no cover - environment
+except ImportError:                         # pragma: no cover - environment
     pytesseract = Image = None
     HAVE_TESSERACT = False
+except Exception as _error:                 # pragma: no cover - environment
+    pytesseract = Image = None
+    HAVE_TESSERACT = False
+    IMPORT_ERROR = f"{type(_error).__name__}: {_error}"
 
 try:                                        # pragma: no cover - environment
     import easyocr
@@ -51,6 +70,12 @@ IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".heic", ".webp", ".tif", ".tiff", ".
 #: reports 0-100 per word; this is the point at which a smudged digit becomes a
 #: confident wrong number, which is the failure this project exists to prevent.
 WORD_CONFIDENCE = 60
+
+#: Fewer words than this off a whole receipt and the engine has failed, however
+#: sure it is of the few it found. Even a card slip prints a merchant, a date,
+#: an amount and a card number. Deliberately low: this is a floor under
+#: "obviously failed", not a judgement about how much a receipt should say.
+MINIMUM_WORDS = 8
 
 _reader = None
 
@@ -170,6 +195,17 @@ def read_image(path: str) -> dict:
         return _read_with_easyocr(path)
 
     name = os.path.basename(path)
+    if IMPORT_ERROR:
+        raise NoEngine(
+            f"{name} is a photograph, and the OCR engine is installed but "
+            f"would not load:\n"
+            f"  {IMPORT_ERROR}\n"
+            "This is not a missing package and reinstalling will not fix it. "
+            "The usual cause is another module shadowing one it needs — a file "
+            "in the working directory named after a standard library module, "
+            "such as select.py, socket.py or json.py — or a broken numpy or "
+            "pandas in this environment. Run `python -c \"import pytesseract\"` "
+            "to see the whole traceback.")
     if HAVE_TESSERACT:
         # The wrapper is installed and the program it wraps is not, which is
         # what `pip install crossfoot[ocr]` alone leaves you with. Saying "no
@@ -432,13 +468,22 @@ def _assemble(words, engine, path) -> dict:
     lines = _lines_from(words)
     doubtful = [w for w in words if w.confidence < WORD_CONFIDENCE]
     ratio = len(doubtful) / len(words) if words else 1.0
+    # A ratio has no opinion about how much was read. Measured on a photograph
+    # of a Dutch fuel receipt, the engine returned **two words**, was sure of
+    # both, and the reading scored 100% confident and not degraded -- so a
+    # receipt the engine had almost entirely failed to read was the most
+    # trusted reading in the batch. Two words is a failed reading that happens
+    # to contain no doubt, which is not the same as a good one, and a receipt
+    # yielding "TOTAL 5.00" and nothing else would have been believed on the
+    # strength of having nothing to disagree with.
+    too_little = len(words) < MINIMUM_WORDS
     return {
         "text": "\n".join(line["text"] for line in lines),
         "lines": lines,
         "words": words,
         "reader": engine,
         "path": path,
-        "degraded": ratio > 0.2 or not words,
+        "degraded": ratio > 0.2 or too_little,
         "confidence": round(100 * (1 - ratio), 1),
         "doubtful": [w.text for w in doubtful],
     }

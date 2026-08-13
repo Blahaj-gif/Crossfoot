@@ -61,9 +61,24 @@ _LABELS = {
     # two errors from one word, and a receipt that failed for a reason having
     # nothing to do with the merchant.
     "fees": ("fee", "fees", "surcharge", "service fee", "booking fee"),
+    # Measured against 55 photographs of real receipts from Commons, none of
+    # which this project chose the wording of. The list above was written
+    # alongside a corpus of receipts this project also wrote, so every label in
+    # that corpus was a label this list already knew -- which is exactly the
+    # kind of agreement that measures nothing.
+    #
+    # A Dutch fuel receipt prints TOTAAL. The engine read it correctly, the
+    # amount beside it correctly, and the parser returned no total, because
+    # "totaal" is not "total" and the match is on word boundaries. That is a
+    # whole country of receipts missed on a spelling.
     "total": ("total", "amount due", "balance due", "grand total", "total due",
               "amount paid", "total sale", "to pay", "total ttc", "summe",
-              "gesamt", "totale", "importe total"),
+              "gesamt", "totale", "importe total",
+              # Dutch and Flemish. "te betalen" is what Lidl and Aldi print.
+              "totaal", "te betalen", "totaalbedrag",
+              # Elsewhere in Europe, all seen on real receipts.
+              "ukupno", "razem", "celkem", "toplam", "totalt", "yhteensa",
+              "yhteensä", "suma total", "importo totale", "valor total"),
 }
 
 #: A number that looks like money: optional currency mark, digits, two decimals.

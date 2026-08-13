@@ -247,22 +247,32 @@ already-legible photograph is not a better reading, it is a different wrong one.
 comes back unchecked with a reason, which is the correct answer and not a
 useful one.
 
-### On real paper
+### On real paper: the number above does not transfer
 
-Six photographs of actual receipts, freely licensed, fetched with
-`python -m tests.corpus.photographs` and keyed by reading the paper: a Swiss
-restaurant bill on a wooden table, a 1988 Intershop slip that has been folded
-since 1988, a Korean receipt labelled entirely in Hangul, a Dutch one
-photographed with the total off the bottom of the frame, a VAT-inclusive
-receipt from Papua New Guinea, and a bank transfer confirmation that is not a
-till receipt at all.
+**55 photographs of real receipts. 52 refused. One produced a total, and it is
+a bill-pay screenshot rather than paper.** With the refusal gate switched off
+entirely, 7 of the 55 produce any money field at all. Nothing crashed, nothing
+recorded a wrong figure, and the median receipt took 0.8 seconds.
 
-**Every one of them comes back unchecked. Not one wrong figure is recorded.**
-That is the safety property working exactly as designed, and it is also not a
-useful result: the tool checked nothing.
+The full method, the buckets, and the file-by-file result are in
+[docs/real-receipts.md](docs/real-receipts.md); `tests/corpus/batch.json`
+carries the source and licence of every image so it can be repeated.
 
-They found two bugs that the rendered corpus structurally could not, which is
-the argument for having them:
+**Why the 17 of 22 above is not a forecast of that.** The 22-receipt corpus is
+rendered from receipt text written for this project. Its expected values were
+keyed by reading rather than by running the parser — which was the precaution
+taken at the time, and it is not enough, because the receipts and the parser
+had the same author. Every label in that corpus was a label the parser already
+knew. Real receipts say `TOTAAL`, `UKUPNO`, `Te betalen`, `합계`.
+
+So the safety property holds on real paper exactly as designed, and it is close
+to vacuous there: a tool that answers once in 55 cannot be wrong often. The
+checking layer works. **The reading layer does not yet feed it**, and no parser
+fix in this pass moved the result — the Dutch `TOTAAL` was added to the label
+list, and on the same receipt the engine read the amount beside it as `e.74`.
+
+Six of the 55 were keyed field by field, and they found two bugs the rendered
+corpus structurally could not:
 
 - A flat, sharp, entirely legible scan produced **zero words** at every page
   segmentation mode. The receipt was lying on a blue desk mat, and Tesseract
@@ -275,6 +285,17 @@ the argument for having them:
   later `TOTAL` beats an earlier one it overwrote the real one. The receipt
   reported a total of 1.77 against a charge of 19.50. That phrasing is printed
   on VAT-inclusive receipts across most of the world.
+
+And one it cannot fix by patching. **A photograph can contain two receipts** —
+one Lidl picture in the batch has two, side by side. Nothing here has a concept
+of that: the paper-finder draws one box around both, and two receipts' fields
+would be read as one. That needs a design decision rather than a patch, and it
+is not made yet.
+
+**So: should you point a camera at this today? No.** Feed it PDFs and emailed
+receipts, where the text is text and none of the above applies, and feed it
+your statement, which is a CSV that OCR cannot touch. The photograph path is
+measured, honest and not ready.
 
 If you photograph a few of your own receipts and they come out wrong, that is
 still the most useful bug report this project can receive.

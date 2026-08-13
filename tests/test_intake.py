@@ -260,10 +260,40 @@ def test_words_become_lines_in_reading_order():
 
 
 def test_a_photograph_read_confidently_is_not_degraded():
-    words = [_word("TOTAL", 96, 10, 10), _word("17.31", 94, 300, 10)]
+    """
+    A whole receipt's worth of words, none of them doubtful.
+
+    This used two words, which now trips the floor tested below — and that
+    floor is a different property than the one this test is about. A receipt
+    that reads cleanly reads a merchant, some items and a total, so the fixture
+    says so rather than standing in for one with a pair of words.
+    """
+    words = [_word("BLUE", 96, 10, 10), _word("BOTTLE", 95, 60, 10),
+             _word("Latte", 94, 10, 30, line=1), _word("13.50", 95, 300, 30, line=1),
+             _word("TAX", 96, 10, 50, line=2), _word("1.11", 94, 300, 50, line=2),
+             _word("TIP", 96, 10, 70, line=3), _word("2.70", 95, 300, 70, line=3),
+             _word("TOTAL", 97, 10, 90, line=4), _word("17.31", 94, 300, 90, line=4)]
     assembled = ocr._assemble(words, "test", "r.jpg")
     assert assembled["degraded"] is False
     assert assembled["confidence"] == 100.0
+
+
+def test_a_photograph_the_engine_barely_read_is_degraded_however_sure_it_is():
+    """
+    Measured on a photograph of a Dutch fuel receipt: the engine returned two
+    words, was certain of both, and the reading came back 100% confident and
+    not degraded — the most trusted reading in a batch of 55 real photographs,
+    off a receipt it had almost entirely failed to read.
+
+    A ratio has no opinion about how much was read. Two words is a failed
+    reading that happens to contain no disagreement, and a receipt yielding
+    "TOTAL 5.00" and nothing else would be believed for want of anything to
+    contradict it.
+    """
+    words = [_word("TOTAL", 99, 10, 10), _word("5.00", 99, 300, 10)]
+    assembled = ocr._assemble(words, "test", "r.jpg")
+    assert assembled["confidence"] == 100.0
+    assert assembled["degraded"] is True
 
 
 def test_a_smudged_photograph_is_marked_degraded():

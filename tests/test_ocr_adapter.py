@@ -263,10 +263,29 @@ def test_a_confidence_tesseract_cannot_express_is_not_a_number(fake_tesseract):
 
 def test_a_clean_reading_is_not_degraded(fake_tesseract):
     path = fake_tesseract([
-        _word("TOTAL", 96, 10, 10), _word("17.31", 94, 300, 10),
+        _word("BLUE", 96, 10, 10), _word("BOTTLE", 95, 60, 10),
+        _word("Latte", 94, 10, 30, line=1), _word("13.50", 95, 300, 30, line=1),
+        _word("TAX", 96, 10, 50, line=2), _word("1.11", 94, 300, 50, line=2),
+        _word("TIP", 96, 10, 70, line=3), _word("2.70", 95, 300, 70, line=3),
+        _word("TOTAL", 97, 10, 90, line=4), _word("17.31", 94, 300, 90, line=4),
     ])
     read = ocr.read_image(path)
     assert read["degraded"] is False and read["confidence"] == 100.0
+
+
+def test_a_reading_of_almost_nothing_is_degraded_however_sure_it_is(fake_tesseract):
+    """
+    The most trusted reading in a batch of 55 real photographs was two words
+    off a Dutch fuel receipt the engine had otherwise failed to read: no
+    doubtful words, so a doubt *ratio* of zero, so 100% confident and not
+    degraded. A ratio has no opinion about how much was read.
+    """
+    path = fake_tesseract([
+        _word("TOTAL", 99, 10, 10), _word("5.00", 99, 300, 10),
+    ])
+    read = ocr.read_image(path)
+    assert read["confidence"] == 100.0
+    assert read["degraded"] is True
 
 
 def test_a_reading_full_of_doubt_is_degraded(fake_tesseract):
