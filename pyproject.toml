@@ -15,7 +15,7 @@ license = "MIT"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest", "hypothesis"]
+dev = ["pytest", "hypothesis", "pillow"]
 # Layout parsing. Optional because the checking layer is arithmetic and stdlib,
 # and someone who only wants to reconcile numbers they already have should not
 # have to install a machine-learning stack to do it.
