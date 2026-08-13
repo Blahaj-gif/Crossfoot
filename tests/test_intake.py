@@ -210,14 +210,22 @@ def test_an_image_is_recognised_by_suffix():
         assert not ocr.is_image(name), name
 
 
-def test_a_photograph_with_no_engine_is_refused_not_read_as_bytes(tmp_path):
+def test_a_photograph_with_no_engine_is_refused_not_read_as_bytes(
+        tmp_path, monkeypatch):
     """
     The failure this prevents: a JPEG read as text is binary noise that a
     parser will cheerfully find amounts in. Refusing names the fix; reading it
     would invent numbers.
+
+    The engines are patched off rather than skipped on. The first version asked
+    the machine whether an engine was installed, so it tested one thing on a
+    developer's laptop and another on CI, and it started failing the day
+    Tesseract was installed here — which is a test measuring its surroundings
+    rather than the code.
     """
-    if ocr.available():                                  # pragma: no cover
-        pytest.skip("an OCR engine is installed, so this path is not taken")
+    monkeypatch.setattr(ocr, "HAVE_TESSERACT", False)
+    monkeypatch.setattr(ocr, "HAVE_EASYOCR", False)
+    monkeypatch.setattr(ocr, "_tesseract_binary_works", lambda: False)
     path = tmp_path / "receipt.jpg"
     path.write_bytes(b"\xff\xd8\xff\xe0 not really a jpeg")
     with pytest.raises(document.UnreadableDocument) as caught:

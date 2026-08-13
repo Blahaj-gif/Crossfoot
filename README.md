@@ -41,11 +41,9 @@ all. It feeds them.
 
 ## Status
 
-All six steps exist. 474 tests, including a corpus of 22 receipts typed from
-the layouts real tills, restaurants, supermarkets and invoicing systems print,
-with the expected values written by reading the paper rather than by running
-the parser. All 22 are read exactly as stated, and none of them reconciles on a
-wrong reading.
+All six steps exist. 495 tests, including a corpus of 22 receipts run both as
+text and as images through Tesseract. See *What it actually gets right* below
+for the numbers.
 
 ### If you would rather not use a terminal
 
@@ -191,18 +189,44 @@ consumes them. There is no MCP server — when there is, it will import the queu
 and the *ledger reader*, never the writer, which is the separation CI already
 enforces.
 
-**Nothing here has met a photograph of a real receipt.** The corpus is 22
-receipts typed from the layouts real tills and invoicing systems print, with
-the expected values written by reading them rather than by running the parser,
-and it found three bugs the day it was added: a French tax line that was
-invisible, "Delivery" read as a fee instead of a line item, and a row of
-scanning artefacts returned as a merchant name. That is a real test and it is
-not the same as paper.
+## What it actually gets right
 
-So the honest statement of accuracy is: on 22 typed layouts covering both
-decimal conventions, six known traps and four languages, every field reads as
-stated and none reconciles on a wrong reading. Nothing is claimed about a
-crumpled thermal receipt photographed at an angle, because none has been tried.
+Two measurements, both on the same 22-receipt corpus, whose expected values
+were written by reading the paper rather than by running the parser.
+
+**As text**, every field on all 22 reads exactly as stated, and none of them
+reconciles on a wrong reading.
+
+**As images**, rendered and then damaged four ways, read with Tesseract:
+
+| | read exactly | silent passes |
+|---|---|---|
+| clean | 17 / 22 | **0** |
+| faded (thermal paper in a wallet) | 17 / 22 | **0** |
+| sensor noise | 18 / 22 | **0** |
+| blurred | 15 / 22 | **0** |
+| rotated 2.5° | 14 / 22 | **0** |
+
+The second column is the one that matters. Tesseract misreads digits: a zero
+becomes an eight, a `0.50` becomes `Q.50`. It happens on maybe a quarter of
+these receipts, and **not once does a misread come out reconciled.** The checks
+catch it and say so, which is the entire point of the design: the tool is not
+promising to read your receipt perfectly, it is promising to tell you when it
+did not.
+
+That is possible because the bank statement is a CSV. OCR cannot corrupt it, so
+a receipt misread even *consistently* still fails against a number that was
+never photographed.
+
+Getting there took four bugs that only a photograph could have shown, listed in
+the commit that fixed them. The largest: Tesseract's default page segmentation
+decides a receipt is a multi-column document and throws most of the amount
+column away. It found one amount in five, and every field came back empty.
+
+**Still not a photograph of crumpled thermal paper.** These are rendered images
+of typed text with damage applied, which is a real test and is not the same
+thing. If you photograph a few real receipts and they come out wrong, that is
+the most useful bug report this project can receive.
 
 ## The wall
 

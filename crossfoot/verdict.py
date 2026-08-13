@@ -381,6 +381,56 @@ def _currency_of(document):
     return _CURRENCY_CODES.get(mark, mark.upper() if mark.isalpha() else None)
 
 
+def check_parts_do_not_exceed_the_total(receipt) -> Check:
+    """
+    Tax and tip are summed *into* the total, so neither can be larger than it.
+
+    Arithmetic, not a heuristic, and it exists because a photograph found the
+    gap. A French receipt's "TVA 5,5%  0,20" came off the page as "8,20", and
+    the receipt reconciled: the total was read correctly, the charge matched
+    it, and the tax was compared with nothing at all because that receipt
+    prints no subtotal this recognises. A tax of 8.20 inside a total of 3.80 is
+    impossible on its face, and nothing was saying so.
+
+    Deliberately only tax and tip. A discount can legitimately be most of the
+    price, and a single line item can exceed the total when a discount follows
+    it, so a rule covering those would fire on ordinary receipts. These two
+    cannot exceed the total without something having been misread.
+
+    Compared on magnitudes: a refund receipt is negative throughout, and it is
+    still true there that the parts cannot outgrow the whole.
+    """
+    total = cents((receipt or {}).get("total"))
+    if total is None or not total:
+        return Check("parts_within_total", None,
+                     detail="the receipt states no total to compare against")
+
+    compared = []
+    for name in ("tax", "tip"):
+        part = cents((receipt or {}).get(name))
+        if part is None:
+            continue
+        compared.append(name)
+        if abs(part) > abs(total):
+            return Check("parts_within_total", False, expected=abs(total),
+                         actual=abs(part),
+                         detail=(f"the {name} reads as {_money(abs(part))} inside a "
+                                 f"total of {_money(abs(total))}, which cannot be "
+                                 "right — one of the two was misread"))
+
+    if not compared:
+        # A receipt stating only a total has no parts, so "the parts fit inside
+        # it" is vacuously true and means nothing. Returning a pass here made a
+        # receipt with a single number reconcile on the strength of a
+        # comparison that never happened, which is the exact failure this
+        # module is built to refuse.
+        return Check("parts_within_total", None,
+                     detail="the receipt states no tax or tip to compare")
+
+    return Check("parts_within_total", True,
+                 detail=f"{' and '.join(compared)} fit inside the total")
+
+
 def check_receipt_matches_the_charge(receipt, charge) -> Check:
     """
     The receipt's total against the amount that actually left the account.
@@ -463,6 +513,7 @@ def reconcile(receipt=None, charge=None) -> dict:
     checks = [
         check_lines_sum_to_subtotal(receipt),
         check_subtotal_builds_the_total(receipt),
+        check_parts_do_not_exceed_the_total(receipt),
         check_receipt_matches_the_charge(receipt, charge),
     ]
     failed = [c for c in checks if c.ok is False]

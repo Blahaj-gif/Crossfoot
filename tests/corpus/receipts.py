@@ -93,12 +93,13 @@ ZWISCHENSUMME          13,77
 MWST 7%                 0,96
 SUMME                  14,73
 """,
-    expect=dict(merchant="EDEKA MARKT", tax=96, total=None,
-                lines=[]),
-    # ZWISCHENSUMME and SUMME are not labels this knows. What matters is that
-    # it does not read 14,73 as fourteen hundred, and that it does not invent
-    # a subtotal it cannot see.
-    note="German labels are unknown; the numbers must still not be misread.",
+    expect=dict(merchant="EDEKA MARKT", subtotal=1377, tax=96, total=1473,
+                lines=[249, 329, 799]),
+    # The expectation used to say total=None, which recorded what the parser
+    # could do rather than what the paper says. A person reading this sees
+    # SUMME 14,73 and calls it the total. The corpus states the truth and the
+    # parser was made to match it.
+    note="German labels: ZWISCHENSUMME is the subtotal, SUMME the total.",
 ),
 
 dict(

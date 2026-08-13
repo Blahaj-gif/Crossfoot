@@ -39,8 +39,14 @@ THRESHOLD = 0.6
 #: never read as "TOTAL", which would put the subtotal in the total and make a
 #: receipt reconcile against itself by accident.
 _LABELS = {
+    # "total ht" is French for the total before tax, and it is a *subtotal*.
+    # Missing it meant a French receipt had no subtotal, so nothing could
+    # cross-check its tax line, so a tax misread from 0,20 to 0,28 reconciled.
+    # The receipt was carrying the redundancy the whole time and this was not
+    # reading it. Longest-match wins, so "total ht" beats "total".
     "subtotal": ("subtotal", "sub total", "sub-total", "net total", "goods total",
-                 "merchandise", "items total"),
+                 "merchandise", "items total", "total ht", "total hors taxes",
+                 "zwischensumme", "netto", "total excl", "total before tax"),
     # The corpus found "tva" missing, so a French receipt's tax line was
     # invisible and its arithmetic could not be checked at all. Sales tax has a
     # different name in every country and there is no way to derive the list --
@@ -56,7 +62,8 @@ _LABELS = {
     # nothing to do with the merchant.
     "fees": ("fee", "fees", "surcharge", "service fee", "booking fee"),
     "total": ("total", "amount due", "balance due", "grand total", "total due",
-              "amount paid", "total sale", "to pay"),
+              "amount paid", "total sale", "to pay", "total ttc", "summe",
+              "gesamt", "totale", "importe total"),
 }
 
 #: A number that looks like money: optional currency mark, digits, two decimals.
@@ -93,9 +100,24 @@ class Field:
 
 
 def _amounts_in(line: str):
-    """Every money-shaped number on a line, as cents, left to right."""
+    """
+    Every money-shaped number on a line, as cents, left to right.
+
+    A number with a percent sign after it is a rate and is never the money.
+    That sounds obvious and it was not handled, and OCR is what exposed it:
+    "TAX 8.25%    0.50" came off a photograph as "TAX 8.25% Q.50", the real
+    amount failed to parse, and the *rate* was the only number left on the
+    line. So the tax was recorded as 8.25 and the receipt was wrong in a way
+    that looked entirely reasonable.
+
+    "TAX 8.25%" is on almost every receipt printed in the United States, so
+    this had a very long reach and only a photograph could have shown it.
+    """
     out = []
     for match in _AMOUNT.finditer(line):
+        after = line[match.end():match.end() + 1]
+        if after == "%":
+            continue
         whole = match.group(1).replace(",", "").replace(" ", "")
         out.append(cents(f"{whole}.{match.group(2)}"))
     return [a for a in out if a is not None]

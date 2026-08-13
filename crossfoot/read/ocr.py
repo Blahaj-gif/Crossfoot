@@ -193,8 +193,24 @@ def read_image(path: str) -> dict:
         "parser will find amounts in.")
 
 
+#: Page segmentation mode 6: "assume a single uniform block of text".
+#:
+#: Not a tuning knob. The default mode runs layout analysis first, decides a
+#: receipt is a multi-column document, and then **discards most of the amount
+#: column**. Measured on a clean render of a Waitrose receipt it found one of
+#: five amounts, and the one it found landed in a block of its own, so no line
+#: had a label and a number on it and every field came back empty. The whole
+#: photograph path was broken in a way no amount of testing with fake data
+#: could have shown, because the fake supplied the words layout analysis was
+#: throwing away.
+#:
+#: A till receipt *is* a single uniform block of text. Saying so takes it from
+#: one amount in five to four, with labels and their numbers on the same line.
+PSM = os.getenv("CROSSFOOT_TESSERACT_PSM", "6").strip() or "6"
+
+
 def _read_with_tesseract(path):          # pragma: no cover - needs the binary
-    data = pytesseract.image_to_data(Image.open(path),
+    data = pytesseract.image_to_data(Image.open(path), config=f"--psm {PSM}",
                                      output_type=pytesseract.Output.DICT)
     words = []
     for index, text in enumerate(data["text"]):

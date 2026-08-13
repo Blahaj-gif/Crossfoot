@@ -49,10 +49,20 @@ def _tesseract_returning(words):
         for key in keys:
             data[key].append(word[key])
 
+    # The config string is captured rather than ignored. It carries the page
+    # segmentation mode, and getting that wrong silently destroyed the amount
+    # column on every two-column receipt -- so the fake has to see it.
+    seen = {}
+
+    def image_to_data(image, config=None, output_type=None):
+        seen["config"] = config
+        return data
+
     module = types.SimpleNamespace(
         Output=_FakeOutput,
-        image_to_data=lambda image, output_type=None: data,
+        image_to_data=image_to_data,
         get_tesseract_version=lambda: "5.4.0",
+        seen=seen,
     )
     return module
 
@@ -70,6 +80,7 @@ def fake_tesseract(monkeypatch, tmp_path):
 
     def install(words):
         module = _tesseract_returning(words)
+        install.module = module
         monkeypatch.setattr(ocr, "pytesseract", module)
         monkeypatch.setattr(ocr, "Image",
                             types.SimpleNamespace(open=lambda p: p))
@@ -252,3 +263,26 @@ def test_a_doubtful_total_is_withheld_from_the_checks(fake_tesseract):
     ]))
     parsed = R.as_receipt(R.extract(read["text"], read["lines"]))
     assert "total" not in parsed
+
+
+def test_the_page_segmentation_mode_is_set(fake_tesseract):
+    """
+    The bug that mattered most, and the one no fake could have found.
+
+    Tesseract's default mode runs layout analysis first, decides a receipt is a
+    multi-column document, and discards most of the amount column. Measured on
+    a clean render of a Waitrose receipt it found one amount out of five, and
+    put that one in a block of its own, so no line had a label and a number on
+    it and every field came back empty.
+
+    A till receipt is a single uniform block of text, which is mode 6. Saying
+    so took that receipt from one amount in five to four, and the corpus from
+    9 of 22 read exactly to 17.
+
+    A fake cannot catch this, because a fake supplies the words layout analysis
+    was throwing away. It can only make sure the setting is still being sent.
+    """
+    path = fake_tesseract([_word("TOTAL", 96, 10, 10)])
+    ocr.read_image(path)
+    assert "--psm" in fake_tesseract.module.seen["config"]
+    assert ocr.PSM == "6"

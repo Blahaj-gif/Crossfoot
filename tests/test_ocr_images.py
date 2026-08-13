@@ -71,10 +71,22 @@ def _measure(degradation, tmp_path):
             continue
         wrong.append((case["name"], mistakes))
 
-        total = parsed.get("total")
-        if total is None:
+        if parsed.get("total") is None:
             continue                        # unreadable is not a silent pass
-        result = V.reconcile(parsed, {"amount": V.Cents(-abs(int(total))),
+
+        # Against the amount the *bank* says was charged, not against the
+        # receipt's own misread total. The first version did the latter and
+        # reported silent passes that cannot happen: a blurred 5.60 read as
+        # 5.68 agreed with itself, so the receipt reconciled against itself.
+        #
+        # In reality the charge comes from a CSV. OCR cannot corrupt it, which
+        # makes the statement the anchor the whole design rests on: a receipt
+        # misread consistently still fails, because the number it is compared
+        # against was never photographed.
+        truth = case["expect"].get("total")
+        if truth is None:
+            continue
+        result = V.reconcile(parsed, {"amount": V.Cents(-abs(int(truth))),
                                       "date": "2026-08-06"})
         if result["verdict"] == V.RECONCILED:
             silent.append((case["name"], mistakes))
