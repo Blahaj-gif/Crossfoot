@@ -214,3 +214,43 @@ def test_a_deferred_optional_import_answers_with_the_install_line(monkeypatch, c
     monkeypatch.setattr(builtins, "__import__", refuse)
     assert cli.review([]) == 1
     assert "crossfoot[ui]" in capsys.readouterr().err
+
+
+def test_the_command_line_and_the_reviewer_read_through_one_loader():
+    """
+    They had two copies and the copies had drifted: the UI dropped the
+    statement's currency, so the cross-currency check fired for `crossfoot
+    check` and was silently dead in the one window where a person approves
+    things. Both surfaces now call `pipeline.load`, and neither keeps a private
+    reimplementation of it.
+    """
+    import ast
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(cli.__file__)))
+    for relative in ("crossfoot/cli.py", "crossfoot/review/app.py"):
+        source = open(os.path.join(root, relative), encoding="utf-8").read()
+        names = set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.ImportFrom):
+                names.add(node.module or "")
+                names.update(f"{node.module or ''}.{a.name}" for a in node.names)
+            elif isinstance(node, ast.Import):
+                names.update(a.name for a in node.names)
+        assert any("pipeline" in n for n in names), relative
+        # Neither may rebuild the charge list itself; that is where they drifted.
+        assert "l[\"description\"]" not in source, relative
+
+
+def test_the_shared_pipeline_cannot_write_a_decision():
+    """It is what every reader goes through, so it must reach no write path."""
+    import ast
+
+    from crossfoot import pipeline
+
+    names = set()
+    for node in ast.walk(ast.parse(open(pipeline.__file__, encoding="utf-8").read())):
+        if isinstance(node, ast.ImportFrom):
+            names.add(node.module or "")
+        elif isinstance(node, ast.Import):
+            names.update(a.name for a in node.names)
+    assert not any("decisions" in n or "ledger" in n for n in names), sorted(names)

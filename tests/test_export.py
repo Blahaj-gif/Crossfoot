@@ -15,6 +15,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from crossfoot import cli
+from crossfoot import pipeline as P
 from crossfoot.export import rows as E
 from crossfoot.export import targets as T
 from crossfoot.match import candidates as M
@@ -60,7 +61,7 @@ def inbox(tmp_path):
 
 
 def _built(inbox):
-    return cli._load(str(inbox / "bank.csv"), str(inbox / "receipts"))["built"]
+    return P.load(str(inbox / "bank.csv"), str(inbox / "receipts"))["built"]
 
 
 def _rows(inbox, decided=()):

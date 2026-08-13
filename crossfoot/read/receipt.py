@@ -13,10 +13,11 @@ The confidence is not a model's self-report. It is how the field was found:
     GUESSED    anything else                                    0.20
 
 `THRESHOLD` is what separates a value that may be used from one that must be
-shown to a person as a crop. Set at 0.6, above INFERRED on purpose: a receipt
-whose total had to be inferred from position is a receipt worth ten seconds of
-somebody's attention, and the alternative is a silent wrong number in a ledger
-that claims to be checked.
+shown to a person as evidence -- the line of text it was read from, since
+nothing in this project handles images and there is no crop to show. Set at
+0.6, above INFERRED on purpose: a receipt whose total had to be inferred from
+position is a receipt worth ten seconds of somebody's attention, and the
+alternative is a silent wrong number in a ledger that claims to be checked.
 
 The text this reads comes from `crossfoot.read.document`, which uses Docling
 where it is installed. Nothing in this module knows or cares which reader

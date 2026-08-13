@@ -74,7 +74,8 @@ spam — because it would be.
 > statements, does the verdict change anything you'd do? If the answer is
 > mostly "no", I'd rather hear it now than build another month on top.
 >
-> `pip install crossfoot` · [repo] · `crossfoot export --to actual`
+> `pip install git+https://github.com/Blahaj-gif/Crossfoot` — it is not on PyPI
+> and will not be until somebody other than me has run it.
 
 ---
 

@@ -13,8 +13,7 @@ import sys
 from crossfoot.export import rows as E
 from crossfoot.export import targets as T
 from crossfoot.ingest import statement as S
-from crossfoot.match import candidates as M
-from crossfoot.read import document, receipt as R
+from crossfoot.pipeline import Refused, load
 # The *reader* of the decision log, which cannot write one. `export` needs to
 # know which discrepancies a person accepted; importing the writer to find out
 # would put `record` one attribute away from every consumer of this module.
@@ -27,73 +26,6 @@ def _money(c) -> str:
     return f"{c // 100:,}.{c % 100:02d}"
 
 
-def _receipts_in(directory: str):
-    receipts, unreadable = [], []
-    if not os.path.isdir(directory):
-        return receipts, unreadable
-    for name in sorted(os.listdir(directory)):
-        path = os.path.join(directory, name)
-        if not os.path.isfile(path):
-            continue
-        try:
-            read = document.read(path)
-        except document.UnreadableDocument as e:
-            unreadable.append((name, str(e)))
-            continue
-        parsed = R.as_receipt(R.extract(read["text"]))
-        # The name the receipt prints, falling back to the filename. A photo
-        # called IMG_2043 names no merchant, and the matcher tests this string
-        # against the bank's descriptor.
-        parsed["merchant"] = (parsed.get("merchant")
-                              or os.path.splitext(name)[0].replace("_", " "))
-        parsed["source"] = name
-        parsed["reader"] = read["reader"]
-        parsed["degraded"] = read.get("degraded", False)
-        receipts.append(parsed)
-    return receipts, unreadable
-
-
-class Refused(Exception):
-    """The inputs cannot be used. Carries the exit code the caller should give."""
-
-    def __init__(self, message, code=2):
-        super().__init__(message)
-        self.code = code
-
-
-def _load(statement_path, receipts_dir):
-    """
-    Statement plus receipts, or a refusal. Shared so that `export` cannot come
-    to a different conclusion from `check` about the same two files -- an
-    exporter that is more permissive than the checker is an exporter that
-    writes a ledger the checker would not stand behind.
-    """
-    try:
-        with open(statement_path, encoding="utf-8", errors="replace") as fh:
-            text = fh.read()
-    except OSError as e:
-        raise Refused(f"Cannot read {statement_path}: {e.strerror}.")
-
-    try:
-        parsed = S.parse(text, statement_path)
-    except S.StatementError as e:
-        raise Refused(f"This statement cannot be used:\n  {e}")
-
-    acceptance = S.accept(parsed)
-    if not acceptance["usable"]:
-        raise Refused(
-            "This statement is not complete, so nothing below it can be trusted:\n"
-            + "\n".join(f"  {p}" for p in acceptance["problems"]))
-
-    receipts, unreadable = _receipts_in(receipts_dir)
-    charges = [{"amount": l["amount"], "description": l["description"],
-                "date": l["date"], "currency": parsed.get("currency")}
-               for l in parsed["lines"]]
-    return {"parsed": parsed, "acceptance": acceptance, "receipts": receipts,
-            "unreadable": unreadable, "charges": charges,
-            "built": Q.build(M.match_all(receipts, charges))}
-
-
 def check(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="crossfoot check")
     parser.add_argument("--statement", required=True)
@@ -101,7 +33,7 @@ def check(argv=None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        loaded = _load(args.statement, args.receipts)
+        loaded = load(args.statement, args.receipts)
     except Refused as e:
         print(str(e), file=sys.stderr if "Cannot read" in str(e) else sys.stdout)
         return e.code
@@ -145,7 +77,7 @@ def export(argv=None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        loaded = _load(args.statement, args.receipts)
+        loaded = load(args.statement, args.receipts)
     except Refused as e:
         print(str(e), file=sys.stderr)
         return e.code

@@ -18,9 +18,8 @@ import sys
 import streamlit as st
 
 from crossfoot import verdict as V
-from crossfoot.ingest import statement as S
-from crossfoot.match import candidates as M
-from crossfoot.read import document, receipt as R
+from crossfoot import pipeline as P
+from crossfoot.read import document
 from crossfoot.review import decisions as D  # the write path; this file only
 from crossfoot.review import queue as Q
 
@@ -47,36 +46,19 @@ def _money(c) -> str:
 @st.cache_data(show_spinner="Reading…")
 def _load(statement_path: str, receipts_dir: str, _stamp: float):
     """
-    Read both sides once. `_stamp` is the newest mtime under the inputs, so an
-    edited file re-reads and an untouched one does not -- rather than a fixed
-    TTL, which would either re-read a hundred PDFs every minute or serve a
-    stale total after someone fixed the file it came from.
+    Read both sides once, through the same loader the command line uses.
+
+    `_stamp` is the newest mtime under the inputs, so an edited file re-reads
+    and an untouched one does not -- rather than a fixed TTL, which would
+    either re-read a hundred PDFs every minute or serve a stale total after
+    somebody fixed the file it came from.
+
+    The work itself is `crossfoot.pipeline.load`, not a copy of it. There were
+    two copies and they had drifted: this one dropped the statement's currency,
+    so the cross-currency check was silently dead in the one window where a
+    person actually approves things.
     """
-    with open(statement_path, encoding="utf-8", errors="replace") as fh:
-        parsed = S.parse(fh.read(), statement_path)
-    acceptance = S.accept(parsed)
-
-    receipts, unreadable = [], []
-    for name in sorted(os.listdir(receipts_dir)) if os.path.isdir(receipts_dir) else []:
-        path = os.path.join(receipts_dir, name)
-        if not os.path.isfile(path):
-            continue
-        try:
-            read = document.read(path)
-        except document.UnreadableDocument as e:
-            unreadable.append((name, str(e)))
-            continue
-        parsed_receipt = R.as_receipt(R.extract(read["text"]))
-        parsed_receipt["merchant"] = (parsed_receipt.get("merchant")
-                                      or os.path.splitext(name)[0].replace("_", " "))
-        parsed_receipt["source"] = name
-        parsed_receipt["reader"] = read["reader"]
-        parsed_receipt["degraded"] = read.get("degraded", False)
-        receipts.append(parsed_receipt)
-
-    charges = [{"amount": l["amount"], "description": l["description"],
-                "date": l["date"]} for l in parsed["lines"]]
-    return acceptance, receipts, unreadable, charges
+    return P.load(statement_path, receipts_dir)
 
 
 def _stamp_for(*paths) -> float:
@@ -168,8 +150,14 @@ def main(argv=None):
     st.set_page_config(page_title="Crossfoot", layout="centered")
     st.title("Crossfoot")
 
-    acceptance, receipts, unreadable, charges = _load(
-        args.statement, args.receipts, _stamp_for(args.statement, args.receipts))
+    try:
+        loaded = _load(args.statement, args.receipts,
+                       _stamp_for(args.statement, args.receipts))
+    except P.Refused as e:
+        st.error(str(e))
+        st.stop()
+    acceptance, receipts = loaded["acceptance"], loaded["receipts"]
+    unreadable = loaded["unreadable"]
 
     # A short statement stops the page. Every verdict below would be
     # individually correct and the page as a whole would be a lie.
@@ -185,8 +173,15 @@ def main(argv=None):
     for name, why in unreadable:
         st.warning(f"`{name}` could not be read: {why}")
 
-    built = Q.build(M.match_all(receipts, charges))
-    outstanding = D.outstanding(built["needs_you"], args.decisions)
+    built = loaded["built"]
+    try:
+        outstanding = D.outstanding(built["needs_you"], args.decisions)
+    except D.TamperedLog as e:
+        # Not a warning. Everything this page hides, it hides because the log
+        # said a person decided it, and a log that cannot be trusted hides the
+        # wrong things.
+        st.error(str(e))
+        st.stop()
 
     st.subheader(built["headline"])
     st.caption(f"{len(receipts)} receipts read · decisions logged to "

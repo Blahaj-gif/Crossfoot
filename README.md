@@ -26,17 +26,25 @@ here is a liability, not a result, and it is never counted as clean.
 
 ## The pipeline
 
-| | | Refuses to |
+| | Built | Refuses to |
 |---|---|---|
-| 1 | **Drop** — watched folder, email, or drag-and-drop. Photos, PDFs, CSV/OFX. | accept a statement whose own running balance does not step correctly row to row: that export is truncated, and every verdict downstream would rest on a partial ledger. |
-| 2 | **Read** — Docling for layout, a local VLM for the crumpled thermal cases. Every field keeps its confidence and the box it came from. | emit a total it read below threshold. It emits the crop and asks. |
+| 1 | **Drop** — a statement file (CSV or OFX) and a folder of receipts, both named on the command line. | accept a statement whose own running balance does not step correctly row to row, or whose rows do not sum to its declared period total: that export is truncated, and every verdict downstream would rest on a partial ledger. |
+| 2 | **Read** — Docling for layout where installed, plain text otherwise. Every field keeps its confidence and the line it came from. | use a total it read below threshold. It names the field and shows you the line. |
 | 3 | **Match** — amount, date window, merchant string. Fuzzy on the name, exact on the cents. | auto-resolve a tie. A guess that looks like a match is worse than a gap that looks like a gap. |
 | 4 | **Crossfoot** — the four checks. | widen a tolerance far enough to hide a magnitude error. Rounding gets cents; nothing gets a percent. |
 | 5 | **Review** — only failures and unchecked reach a human, ordered by money at risk. | let an assistant clear the queue. Approval is a keystroke in your window; there is no path to it from the model's side. |
 | 6 | **Export** — CSV, Beancount, Firefly III, Actual Budget, verdict attached as a tag. | export an *unchecked* row as though it reconciled. |
 
+**Not built, and named here so the table above is not read as a promise:** no
+watched folder, no email intake, no drag-and-drop; no image handling at all, so
+no crops and no pixel boxes — a field's provenance is the line of text it came
+from; and no local vision model, so a photographed thermal receipt is only as
+readable as whatever text your reader can get out of it. Those were in the
+design and are not in the code.
+
 Step 6 is the strategy. Crossfoot does not compete with Firefly III or Actual
-Budget — 52,000 stars between them and no receipt story at all. It feeds them.
+Budget — 52,000 stars between them and no receipt verification at all. It feeds
+them.
 
 ## Status
 
@@ -135,13 +143,31 @@ Decisions append to `decisions.jsonl`, flushed and fsynced per click, each one
 carrying the numbers the person was actually shown. Re-read a document, get a
 different total, and the old approval no longer applies to it.
 
-## Why this exists
+## Whether this should exist
 
 Searching GitHub for a tool that reconciles receipts against a bank statement
 returns five repositories. All five were created between 30 June and 8 August
-2026. All five were abandoned within days — 2, 4 and 6 commits. Demand is
-evidenced by attempts; supply is empty of finished work.
+2026, and all five were abandoned within days — 2, 4 and 6 commits. The first
+reading was that finishing is therefore the moat.
 
-The honest counterweight: nobody starred any of them, and Firefly III's three
-receipt issues and Actual Budget's two are all closed. This is a believed need,
-not yet a measured one.
+Looking harder made that weaker rather than stronger. Actual Budget's
+most-reacted feature request is
+[attaching receipts to transactions](https://github.com/actualbudget/actual/issues/530)
+— 195 reactions — and it was **closed as completed in 2023**, with four later
+duplicates closed the same way. The professional version of the problem is real
+and expensive (bank reconciliation runs about 11 hours per client per month in
+firms that do bookkeeping) and is served by Dext, Expensify, Ramp, Concur, BILL
+and others. Meanwhile *nobody, anywhere, has filed an issue asking for a tool
+that checks a receipt's own arithmetic* — which is the only thing Crossfoot
+does that those don't.
+
+So the empty field may be empty because the part people want is elsewhere and
+already built, and five abandoned repositories are as consistent with "everyone
+discovers there is nothing here" as with "nobody finishes things".
+
+That question is not settled by writing more of this. It is settled by
+[the demand test](docs/demand-test.md), whose threshold was written down before
+any results arrived: 25 people running it on their own statements, and 5 saying
+the *verdict* changed something they did. If that fails, the right ending is to
+leave this as a small finished tool and go and find a problem somebody is
+already trying to pay for.
