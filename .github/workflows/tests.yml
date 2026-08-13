@@ -1,0 +1,94 @@
+# 156 tests that ran only when somebody remembered. This is the cheapest item
+# in the whole readiness list and the one that makes every other test mean
+# something, so it lands regardless of what happens to the rest of the project.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
+
+  no_secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Receipts and statements are the most sensitive documents this project
+      # will ever touch, and a decision log names merchants, dates and amounts.
+      # The sister project shipped a portfolio history to PyPI because files
+      # were listed one by one and one was missed, so this asks git directly
+      # rather than trusting the ignore file to have been complete.
+      - name: Nothing a run produces may be tracked
+        run: |
+          tracked=$(git ls-files | grep -E '\.jsonl$|^receipts/|^statements/|\.sqlite$|^\.env$' || true)
+          if [ -n "$tracked" ]; then
+            echo "these are personal financial records and are tracked:"; echo "$tracked"; exit 1
+          fi
+          echo "clean"
+
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      # The privacy claim in the README, made testable. The checking layer
+      # imports no network library at all; a future dependency that does is a
+      # decision somebody should have to make on purpose.
+      - name: The checking layer must reach no network
+        run: |
+          python - <<'PY'
+          import ast, pathlib, sys
+          banned = {"socket", "urllib", "urllib.request", "http", "http.client",
+                    "requests", "httpx", "aiohttp", "ftplib", "smtplib"}
+          bad = []
+          for path in pathlib.Path("crossfoot").rglob("*.py"):
+              if path.name == "document.py":       # docling seam, optional extra
+                  continue
+              tree = ast.parse(path.read_text(encoding="utf-8"))
+              for node in ast.walk(tree):
+                  names = []
+                  if isinstance(node, ast.Import):
+                      names = [a.name for a in node.names]
+                  elif isinstance(node, ast.ImportFrom):
+                      names = [node.module or ""]
+                  for name in names:
+                      if name.split(".")[0] in {n.split(".")[0] for n in banned}:
+                          bad.append(f"{path}: {name}")
+          if bad:
+              print("network imports found:"); [print(" ", b) for b in bad]; sys.exit(1)
+          print("no network imports")
+          PY
+
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      # The one claim the project makes about safety, asserted in CI rather
+      # than only in a test file somebody could delete alongside the change
+      # that breaks it.
+      - name: Only the review UI may import the decision writer
+        run: |
+          importers=$(grep -rlE '^\s*(from|import).*decisions' crossfoot --include='*.py' \
+                      | grep -v 'review/decisions.py' || true)
+          echo "importers: ${importers:-none}"
+          test "$importers" = "crossfoot/review/app.py"

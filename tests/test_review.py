@@ -218,7 +218,21 @@ def test_a_malformed_line_is_reported_rather_than_skipped(tmp_path):
     """
     log = tmp_path / "decisions.jsonl"
     log.write_text('{"actor": "human"}\nnot json at all\n', encoding="utf-8")
+    # `check=False` because this is about the JSON reader specifically. With the
+    # chain on, a hand-written log fails earlier and for a different reason --
+    # which is itself correct, and is the test below.
     with pytest.raises(ValueError, match="line 2"):
+        D.read_all(str(log), check=False)
+
+
+def test_a_hand_written_log_fails_the_chain_before_anything_else(tmp_path):
+    """
+    Not JSON-parsed first. A file nobody's clicks produced is not a decision
+    log with a formatting problem, it is not a decision log.
+    """
+    log = tmp_path / "decisions.jsonl"
+    log.write_text('{"actor": "human"}\n', encoding="utf-8")
+    with pytest.raises(D.TamperedLog):
         D.read_all(str(log))
 
 
@@ -256,3 +270,126 @@ def test_the_repository_ignores_what_a_run_produces():
     ignored = open(os.path.join(root, ".gitignore"), encoding="utf-8").read()
     for pattern in ("*.jsonl", "receipts/", "*.sqlite", ".env"):
         assert pattern in ignored, pattern
+
+
+# --------------------------------------------------------------------------
+# The chain
+# --------------------------------------------------------------------------
+
+def test_an_untouched_log_verifies(tmp_path):
+    log = str(tmp_path / "decisions.jsonl")
+    items = Q.build([match(broken_receipt(), "17.31"), match(None, "263.88")])["needs_you"]
+    for item in items:
+        D.record(item, D.IGNORE, actor=D.HUMAN, path=log)
+    chain = D.verify(log)
+    assert chain["intact"] is True and chain["records"] == 2
+
+
+def test_an_empty_log_is_intact_rather_than_broken(tmp_path):
+    assert D.verify(str(tmp_path / "nothing.jsonl"))["intact"] is True
+
+
+def test_rewriting_the_log_is_caught(tmp_path):
+    """
+    The exact attack that succeeded before the chain existed: replace an
+    `ignore` with an `accept` against a different amount. Nothing detected it.
+    """
+    log = str(tmp_path / "decisions.jsonl")
+    item = Q.build([match(None, "263.88")])["needs_you"][0]
+    D.record(item, D.IGNORE, actor=D.HUMAN, path=log)
+
+    with open(log, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({"actor": "human", "action": D.ACCEPT_AS_PRINTED,
+                             "seen": {"charge_amount": -999999}}) + "\n")
+
+    assert D.verify(log)["intact"] is False
+    with pytest.raises(D.TamperedLog):
+        D.read_all(log)
+
+
+def test_editing_one_record_in_the_middle_names_that_line(tmp_path):
+    log = str(tmp_path / "decisions.jsonl")
+    items = Q.build([match(None, "1.00"), match(None, "2.00"),
+                     match(None, "3.00")])["needs_you"]
+    for item in items:
+        D.record(item, D.IGNORE, actor=D.HUMAN, path=log)
+
+    lines = open(log, encoding="utf-8").read().splitlines()
+    doctored = json.loads(lines[1])
+    doctored["action"] = D.ACCEPT_AS_PRINTED
+    lines[1] = json.dumps(doctored, sort_keys=True)
+    open(log, "w", encoding="utf-8").write("\n".join(lines) + "\n")
+
+    chain = D.verify(log)
+    assert chain["intact"] is False
+    # The edited line still hashes into line 3, so line 3 is where the walk
+    # first disagrees -- and that is the honest thing to report.
+    assert chain["broke_at"] == 3
+
+
+def test_deleting_a_record_breaks_the_chain(tmp_path):
+    """A decision that quietly disappears is the failure this is for."""
+    log = str(tmp_path / "decisions.jsonl")
+    items = Q.build([match(None, "1.00"), match(None, "2.00"),
+                     match(None, "3.00")])["needs_you"]
+    for item in items:
+        D.record(item, D.IGNORE, actor=D.HUMAN, path=log)
+
+    lines = open(log, encoding="utf-8").read().splitlines()
+    open(log, "w", encoding="utf-8").write("\n".join([lines[0], lines[2]]) + "\n")
+    assert D.verify(log)["intact"] is False
+
+
+def test_reordering_two_records_breaks_the_chain(tmp_path):
+    log = str(tmp_path / "decisions.jsonl")
+    items = Q.build([match(None, "1.00"), match(None, "2.00")])["needs_you"]
+    for item in items:
+        D.record(item, D.IGNORE, actor=D.HUMAN, path=log)
+
+    lines = open(log, encoding="utf-8").read().splitlines()
+    open(log, "w", encoding="utf-8").write("\n".join(reversed(lines)) + "\n")
+    assert D.verify(log)["intact"] is False
+
+
+def test_appending_a_forged_record_without_the_right_prev_is_caught(tmp_path):
+    log = str(tmp_path / "decisions.jsonl")
+    item = Q.build([match(None, "1.00")])["needs_you"][0]
+    D.record(item, D.IGNORE, actor=D.HUMAN, path=log)
+    with open(log, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"actor": "human", "action": D.ACCEPT_AS_PRINTED,
+                             "prev": "deadbeef" * 8}) + "\n")
+    assert D.verify(log)["broke_at"] == 2
+
+
+def test_a_truncated_log_cannot_pass_as_a_shorter_one(tmp_path):
+    """
+    Genesis is a literal rather than a null, so a file cut from the top does
+    not verify as a legitimate shorter history.
+    """
+    log = str(tmp_path / "decisions.jsonl")
+    items = Q.build([match(None, "1.00"), match(None, "2.00")])["needs_you"]
+    for item in items:
+        D.record(item, D.IGNORE, actor=D.HUMAN, path=log)
+    lines = open(log, encoding="utf-8").read().splitlines()
+    open(log, "w", encoding="utf-8").write(lines[1] + "\n")
+    assert D.verify(log)["intact"] is False
+
+
+def test_every_record_carries_a_schema_version(tmp_path):
+    """A log written this year is evidence for a return filed three years on."""
+    log = str(tmp_path / "decisions.jsonl")
+    item = Q.build([match(None, "1.00")])["needs_you"][0]
+    assert D.record(item, D.IGNORE, actor=D.HUMAN, path=log)["schema"] == D.SCHEMA
+
+
+def test_the_review_queue_refuses_to_run_against_a_broken_log(tmp_path):
+    """
+    Not a warning. Everything the queue hides, it hides because the log said a
+    person decided it, and a log that cannot be trusted hides the wrong things.
+    """
+    log = str(tmp_path / "decisions.jsonl")
+    items = Q.build([match(None, "1.00")])["needs_you"]
+    D.record(items[0], D.IGNORE, actor=D.HUMAN, path=log)
+    open(log, "w", encoding="utf-8").write('{"actor":"human","seen":{}}\n')
+    with pytest.raises(D.TamperedLog):
+        D.outstanding(items, log)
