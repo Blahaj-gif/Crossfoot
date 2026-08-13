@@ -1,13 +1,13 @@
 # Crossfoot
 
-Receipts and statements in. A **verdict** out — not a category.
+Receipts and statements in. A **verdict** out, not a category.
 
 Every other receipt tool draws you a pie chart of where the money went. The
 chart is the part that does not matter, because it is drawn on numbers nobody
 checked. Crossfoot's product is the check.
 
 > *Crossfooting* is the auditor's practice of verifying that a row's total and
-> its column's total agree — two independently derived numbers about the same
+> its column's total agree: two independently derived numbers about the same
 > fact. A receipt states its own totals two or three times over. So does a
 > statement. Nothing here needs a model's opinion to know when they disagree.
 
@@ -28,27 +28,31 @@ here is a liability, not a result, and it is never counted as clean.
 
 | | Built | Refuses to |
 |---|---|---|
-| 1 | **Drop** — drag the bank export and the receipts into the window, or into one folder. Which file is which is decided by *reading* them, so their names do not matter. | accept a statement whose own running balance does not step correctly row to row, or whose rows do not sum to its declared period total: that export is truncated, and every verdict downstream would rest on a partial ledger. |
-| 2 | **Read** — Docling for PDFs, Tesseract or EasyOCR for photographs, plain text otherwise. Every field keeps its confidence, the line it came from, and — from a photograph — the rectangle on the page. | use a total it read below threshold. It names the field and shows you the crop of the actual paper it was read from. |
-| 3 | **Match** — amount, date window, merchant string. Fuzzy on the name, exact on the cents. | auto-resolve a tie. A guess that looks like a match is worse than a gap that looks like a gap. |
-| 4 | **Crossfoot** — the four checks. | widen a tolerance far enough to hide a magnitude error. Rounding gets cents; nothing gets a percent. |
-| 5 | **Review** — only failures and unchecked reach a human, ordered by money at risk. | let an assistant clear the queue. Approval is a keystroke in your window; there is no path to it from the model's side. |
-| 6 | **Export** — CSV, Beancount, Firefly III, Actual Budget, verdict attached as a tag. | export an *unchecked* row as though it reconciled. |
+| 1 | **Drop.** Drag the bank export and the receipts into the window, or into one folder. Which file is which is decided by *reading* them, so their names do not matter. | accept a statement whose own running balance does not step correctly row to row, or whose rows do not sum to its declared period total: that export is truncated, and every verdict downstream would rest on a partial ledger. |
+| 2 | **Read.** Docling for PDFs, Tesseract or EasyOCR for photographs, plain text otherwise. Every field keeps its confidence, the line it came from, and (from a photograph) the rectangle on the page. | use a total it read below threshold. It names the field and shows you the crop of the actual paper it was read from. |
+| 3 | **Match.** Amount, date window, merchant string. Fuzzy on the name, exact on the cents. | auto-resolve a tie. A guess that looks like a match is worse than a gap that looks like a gap. |
+| 4 | **Crossfoot.** The four checks. | widen a tolerance far enough to hide a magnitude error. Rounding gets cents; nothing gets a percent. |
+| 5 | **Review.** Only failures and unchecked reach a human, ordered by money at risk. | let an assistant clear the queue. Approval is a keystroke in your window; there is no path to it from the model's side. |
+| 6 | **Export.** CSV, Beancount, Firefly III, Actual Budget, verdict attached as a tag. | export an *unchecked* row as though it reconciled. |
 
 Step 6 is the strategy. Crossfoot does not compete with Firefly III or Actual
-Budget — 52,000 stars between them and no receipt verification at all. It feeds
-them.
+Budget. They have 52,000 stars between them and no receipt verification at
+all. It feeds them.
 
 ## Status
 
-All six steps exist. 403 tests.
+All six steps exist. 474 tests, including a corpus of 22 receipts typed from
+the layouts real tills, restaurants, supermarkets and invoicing systems print,
+with the expected values written by reading the paper rather than by running
+the parser. All 22 are read exactly as stated, and none of them reconciles on a
+wrong reading.
 
 ### If you would rather not use a terminal
 
 Download this repository, then **double-click** `launch/crossfoot.bat`
 (Windows), `launch/crossfoot.command` (macOS) or `launch/crossfoot.sh` (Linux).
 The first run sets itself up and takes a minute; every run after opens the
-window. You still need Python installed — the script says so and points you at
+window. You still need Python installed. The script says so, and points you at
 python.org if you do not.
 
 They are ordinary text files you can read before running them, on purpose.
@@ -124,8 +128,8 @@ will still be legible next April.
 
 | `--to` | What you get |
 |---|---|
-| `actual` | **Actual Budget**'s importer: Date / Payee / Notes / Amount. The verdict arrives as `#crossfoot-unchecked` in the note, because Actual reads hashtags out of notes and a verdict written as prose is one nobody can filter on. |
-| `firefly` | **Firefly III**'s data importer, with tags as a real column — plus a `.json` beside the CSV holding the column mapping, so it is not twenty dropdowns the first time and twenty again next month. |
+| `actual` | **Actual Budget**'s importer: Date / Payee / Notes / Amount. The verdict arrives as `#crossfoot-unchecked` in the note. Actual reads hashtags out of notes, and a verdict written as prose is one nobody can filter on. |
+| `firefly` | **Firefly III**'s data importer, with tags as a real column, plus a `.json` beside the CSV holding the column mapping, so it is not twenty dropdowns the first time and twenty again next month. |
 | `beancount` | Plain-text accounting. Unreconciled entries carry beancount's own `!` flag, so `bean-check` surfaces them without anyone remembering a tag. |
 | `generic` | A plain CSV with every check that ran. Open it in anything. |
 
@@ -138,8 +142,8 @@ will still be legible next April.
   Expenses:Unknown
 ```
 
-Five verdicts leave, not three. `crossfoot:accepted-by-you` is its own state —
-a person looked at a discrepancy and made a call, and exporting that as either
+Five verdicts leave, not three. `crossfoot:accepted-by-you` is its own state.
+A person looked at a discrepancy and made a call, and exporting that as either
 "reconciled" or "unchecked" would lose the only fact that matters about it.
 
 **Nothing here phones anything.** Every exporter writes a file the target's own
@@ -161,8 +165,8 @@ no code capable of sending them. CI asserts the absence of the imports.
 Nothing degrades silently. A PDF read without Docling, or a photograph the
 engine was unsure about, is marked **degraded** and its numbers are shown as
 evidence rather than used as figures. A photograph with no OCR engine installed
-is *refused* — reading a JPEG as text yields binary noise that a parser will
-cheerfully find amounts in.
+is *refused*, because reading a JPEG as text yields binary noise that a parser
+will cheerfully find amounts in.
 
 Every engine runs locally on data already on your machine. There is
 deliberately no cloud OCR backend: an OCR API is the one line of code that
@@ -172,8 +176,8 @@ constructed with `download_enabled=False` so it cannot fetch weights either.
 ### What is deliberately not built
 
 **Email intake, and it is not an oversight.** Fetching receipts from a mailbox
-means IMAP, which means this project contains code that opens a socket — and
-"no code here is capable of making a network request", asserted by CI, is doing
+means IMAP, which means this project contains code that opens a socket. "No
+code here is capable of making a network request", asserted by CI, is doing
 more work for the people this is for than an email feature would. It would also
 mean holding a mail credential, which is a second secret to protect, for access
 to a mailbox containing far more than receipts.
@@ -187,10 +191,18 @@ consumes them. There is no MCP server — when there is, it will import the queu
 and the *ledger reader*, never the writer, which is the separation CI already
 enforces.
 
-Nothing here has met a real receipt. Every fixture is text typed in the format
-this parser expected, which is a mirror rather than a test — so no accuracy
-claim is made, and the six defects an afternoon of attacking it produced are
-the reason that caveat is at the top rather than the bottom.
+**Nothing here has met a photograph of a real receipt.** The corpus is 22
+receipts typed from the layouts real tills and invoicing systems print, with
+the expected values written by reading them rather than by running the parser,
+and it found three bugs the day it was added: a French tax line that was
+invisible, "Delivery" read as a fee instead of a line item, and a row of
+scanning artefacts returned as a merchant name. That is a real test and it is
+not the same as paper.
+
+So the honest statement of accuracy is: on 22 typed layouts covering both
+decimal conventions, six known traps and four languages, every field reads as
+stated and none reconciles on a wrong reading. Nothing is claimed about a
+crumpled thermal receipt photographed at an angle, because none has been tried.
 
 ## The wall
 
@@ -222,14 +234,14 @@ reading was that finishing is therefore the moat.
 
 Looking harder made that weaker rather than stronger. Actual Budget's
 most-reacted feature request is
-[attaching receipts to transactions](https://github.com/actualbudget/actual/issues/530)
-— 195 reactions — and it was **closed as completed in 2023**, with four later
+[attaching receipts to transactions](https://github.com/actualbudget/actual/issues/530),
+with 195 reactions, and it was **closed as completed in 2023**, with four later
 duplicates closed the same way. The professional version of the problem is real
 and expensive (bank reconciliation runs about 11 hours per client per month in
 firms that do bookkeeping) and is served by Dext, Expensify, Ramp, Concur, BILL
 and others. Meanwhile *nobody, anywhere, has filed an issue asking for a tool
-that checks a receipt's own arithmetic* — which is the only thing Crossfoot
-does that those don't.
+that checks a receipt's own arithmetic* , which is the only thing Crossfoot
+does that those do not.
 
 So the empty field may be empty because the part people want is elsewhere and
 already built, and five abandoned repositories are as consistent with "everyone

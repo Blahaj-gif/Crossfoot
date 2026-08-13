@@ -41,10 +41,20 @@ THRESHOLD = 0.6
 _LABELS = {
     "subtotal": ("subtotal", "sub total", "sub-total", "net total", "goods total",
                  "merchandise", "items total"),
-    "tax": ("tax", "sales tax", "vat", "gst", "hst", "pst", "iva", "mwst"),
+    # The corpus found "tva" missing, so a French receipt's tax line was
+    # invisible and its arithmetic could not be checked at all. Sales tax has a
+    # different name in every country and there is no way to derive the list --
+    # it grows when a receipt shows up that this could not read.
+    "tax": ("tax", "sales tax", "vat", "gst", "hst", "pst", "qst",
+            "iva", "tva", "mwst", "ust", "btw", "moms", "alv", "iva incl"),
     "tip": ("tip", "gratuity", "service charge", "service"),
     "discount": ("discount", "coupon", "savings", "promotion", "you saved"),
-    "fees": ("fee", "fees", "surcharge", "delivery"),
+    # "delivery" was here and had to go. On a furniture receipt it is a line
+    # item that belongs inside the subtotal, and reading it as a fee removed it
+    # from the column being summed *and* added it to the total being built --
+    # two errors from one word, and a receipt that failed for a reason having
+    # nothing to do with the merchant.
+    "fees": ("fee", "fees", "surcharge", "service fee", "booking fee"),
     "total": ("total", "amount due", "balance due", "grand total", "total due",
               "amount paid", "total sale", "to pay"),
 }
@@ -198,7 +208,10 @@ def _merchant(lines):
         stripped = line.strip()
         if not stripped or _amounts_in(line) or _label_on(line):
             continue
-        if len(stripped) < 2 or stripped.replace(" ", "").isdigit():
+        # At least two letters. A row of hashes or asterisks is a scanning
+        # artefact, not a shop, and returning it as the merchant name gives the
+        # matcher a string that can only mislead it.
+        if sum(c.isalpha() for c in stripped) < 2:
             continue
         return stripped
     return ""
