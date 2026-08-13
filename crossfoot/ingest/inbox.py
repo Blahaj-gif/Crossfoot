@@ -27,9 +27,41 @@ from crossfoot.ingest import statement as S
 CONSIDERED = (".csv", ".ofx", ".qfx", ".txt", ".text", ".md", ".pdf",
               ".jpg", ".jpeg", ".png", ".heic", ".webp", ".tif", ".tiff", ".bmp")
 
+#: Where the window drops files when nobody says otherwise. Sensible enough
+#: that nobody has to invent one, and visible enough that nobody wonders where
+#: their files went -- a hidden temp directory would be tidier and would mean
+#: the person could not open, inspect or empty the place their bank statements
+#: are sitting.
+#:
+#: Lives here rather than in the review UI because creating it is intake, not
+#: interface -- and because a test that had to import the UI to reach it would
+#: need Streamlit, which is an optional extra. That mistake has now been made
+#: twice in this project and caught by CI both times.
+DEFAULT = "crossfoot-inbox"
+
 #: How much of a file to read when deciding what it is. A statement announces
 #: itself in its header row or its first tag; nothing needs the whole file.
 SNIFF_BYTES = 4096
+
+
+def make(folder: str = DEFAULT) -> str:
+    """
+    Create the drop folder, and make it refuse to be committed.
+
+    The `.gitignore` written inside it is not redundant with the one in the
+    repository. This folder ends up holding somebody's bank statements, and it
+    travels: people copy it, move it into a project, sync it to a drive. A
+    folder that ignores its own contents stays protected wherever it lands,
+    which a rule in one repository cannot do.
+    """
+    os.makedirs(folder, exist_ok=True)
+    guard = os.path.join(folder, ".gitignore")
+    if not os.path.exists(guard):
+        with open(guard, "w", encoding="utf-8") as fh:
+            fh.write("# Your bank statements and receipts are in here.\n"
+                     "# Nothing in this folder should ever be committed.\n"
+                     "*\n")
+    return folder
 
 
 def looks_like_a_statement(path: str) -> bool:

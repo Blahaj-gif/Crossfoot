@@ -265,3 +265,23 @@ def test_the_shared_pipeline_cannot_write_a_decision():
         elif isinstance(node, ast.Import):
             names.update(a.name for a in node.names)
     assert not any("decisions" in n or "ledger" in n for n in names), sorted(names)
+
+
+def test_no_test_needs_an_optional_dependency_to_run():
+    """
+    Twice now a test has imported `crossfoot.review.app` — which imports
+    Streamlit, an optional extra — and twice CI has caught it, because the
+    test then silently does not run on any default install. Anything a test
+    needs to reach belongs in a module that a bare install can import.
+    """
+    import pathlib
+
+    root = pathlib.Path(os.path.dirname(os.path.abspath(__file__)))
+    offenders = []
+    for path in sorted(root.glob("test_*.py")):
+        source = path.read_text(encoding="utf-8")
+        for line in source.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(("import ", "from ")) and "review.app" in stripped:
+                offenders.append(f"{path.name}: {stripped}")
+    assert not offenders, offenders

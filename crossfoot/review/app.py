@@ -32,11 +32,8 @@ from crossfoot.read import ocr
 from crossfoot.review import decisions as D  # the write path; this file only
 from crossfoot.review import queue as Q
 
-#: Sensible enough that nobody has to invent one, and visible enough that
-#: nobody wonders where their files went. A hidden temp directory would be
-#: tidier and would mean the person could not open, inspect or empty the place
-#: their bank statements are sitting.
-DEFAULT_INBOX = "crossfoot-inbox"
+#: Re-exported from the intake module, which owns it. See `ingest.inbox.DEFAULT`.
+DEFAULT_INBOX = I.DEFAULT
 
 _LABELS = {"actual": "Actual Budget", "firefly": "Firefly III",
            "beancount": "Beancount", "generic": "Spreadsheet (CSV)"}
@@ -110,7 +107,7 @@ def _intake(inbox: str):
         help="Which file is the statement is worked out by reading them, so it "
              "does not matter what they are called.")
     for upload in dropped or []:
-        _make_inbox(inbox)
+        I.make(inbox)
         target = os.path.join(inbox, upload.name)
         if not os.path.exists(target):
             with open(target, "wb") as fh:
@@ -120,25 +117,6 @@ def _intake(inbox: str):
     for name, why in found["ignored"]:
         st.caption(f"skipped `{name}` - {why}")
     return found
-
-
-def _make_inbox(inbox: str):
-    """
-    Create the drop folder, and make it refuse to be committed.
-
-    The `.gitignore` written inside it is not redundant with the one in this
-    repository. This folder ends up holding somebody's bank statements, and it
-    travels: people copy it, move it into a project, sync it. A folder that
-    ignores its own contents is protected wherever it lands, and the repository
-    rule only protects it here.
-    """
-    os.makedirs(inbox, exist_ok=True)
-    guard = os.path.join(inbox, ".gitignore")
-    if not os.path.exists(guard):
-        with open(guard, "w", encoding="utf-8") as fh:
-            fh.write("# Your bank statements and receipts are in here.\n"
-                     "# Nothing in this folder should ever be committed.\n"
-                     "*\n")
 
 
 def _first_run(inbox: str):

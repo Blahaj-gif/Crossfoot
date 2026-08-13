@@ -435,10 +435,7 @@ def test_the_drop_folder_refuses_to_be_committed(tmp_path):
     folder, and the folder ignores itself so it stays protected wherever it is
     copied, moved or synced to.
     """
-    from crossfoot.review import app
-
-    inbox = str(tmp_path / "crossfoot-inbox")
-    app._make_inbox(inbox)
+    inbox = I.make(str(tmp_path / "crossfoot-inbox"))
     guard = os.path.join(inbox, ".gitignore")
     assert os.path.exists(guard)
     assert open(guard, encoding="utf-8").read().strip().endswith("*")
@@ -447,10 +444,8 @@ def test_the_drop_folder_refuses_to_be_committed(tmp_path):
 def test_the_repository_ignores_the_default_drop_folder():
     import subprocess
 
-    from crossfoot.review import app
-
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    probe = os.path.join(app.DEFAULT_INBOX, "somebodys-bank-export.csv")
+    probe = os.path.join(I.DEFAULT, "somebodys-bank-export.csv")
     result = subprocess.run(["git", "check-ignore", "-q", probe],
                             cwd=root, capture_output=True)
     assert result.returncode == 0, (
