@@ -86,9 +86,28 @@ jobs:
       # The one claim the project makes about safety, asserted in CI rather
       # than only in a test file somebody could delete alongside the change
       # that breaks it.
+      # Read from the import graph, not the text. A grep here matched queue.py
+      # on the sentence in its docstring explaining that it does not import
+      # this module -- a check that punishes documenting the rule it enforces,
+      # and the second time that exact mistake was made in this project.
       - name: Only the review UI may import the decision writer
         run: |
-          importers=$(grep -rlE '^\s*(from|import).*decisions' crossfoot --include='*.py' \
-                      | grep -v 'review/decisions.py' || true)
-          echo "importers: ${importers:-none}"
-          test "$importers" = "crossfoot/review/app.py"
+          python - <<'PY'
+          import ast, pathlib, sys
+          importers = []
+          for path in sorted(pathlib.Path("crossfoot").rglob("*.py")):
+              if path.as_posix().endswith("review/decisions.py"):
+                  continue
+              names = set()
+              for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                  if isinstance(node, ast.Import):
+                      names.update(a.name for a in node.names)
+                  elif isinstance(node, ast.ImportFrom):
+                      names.add(node.module or "")
+                      names.update(f"{node.module or ''}.{a.name}" for a in node.names)
+              if any("decisions" in n for n in names):
+                  importers.append(path.as_posix())
+          print("importers:", importers or "none")
+          if importers != ["crossfoot/review/app.py"]:
+              sys.exit("the write path must be reachable from the review UI and nowhere else")
+          PY
