@@ -179,7 +179,7 @@ def test_a_photograph_with_no_engine_is_refused_not_read_as_bytes(tmp_path):
     path.write_bytes(b"\xff\xd8\xff\xe0 not really a jpeg")
     with pytest.raises(document.UnreadableDocument) as caught:
         document.read(str(path))
-    assert "no OCR engine is installed" in str(caught.value)
+    assert "nothing here can read one yet" in str(caught.value)
     assert "crossfoot[ocr]" in str(caught.value)
 
 
@@ -289,5 +289,92 @@ def test_no_ocr_backend_reaches_the_network():
     banned = {"requests", "httpx", "urllib", "http", "socket", "boto3",
               "google", "openai", "anthropic"}
     assert not {n.split(".")[0] for n in names} & banned, sorted(names)
-    # And the one engine that *could* fetch weights is told not to.
-    assert "download_enabled=False" in source
+    # And the one engine that *could* fetch weights only does so on an
+    # explicit opt-in, never by default.
+    assert "download_enabled=allowed" in source
+    assert 'os.getenv(ALLOW_MODEL_DOWNLOAD, "")' in source
+
+
+def test_the_usage_screen_names_every_command_and_leads_with_the_easy_one(capsys):
+    """
+    The one screen a confused person is guaranteed to see. It told people to
+    name two paths on the command line for a week after the one-folder intake
+    shipped, because a patch silently failed to apply and nothing tested this
+    text. Every subcommand and every export target has to appear in it, so
+    adding one and forgetting the help is a failing test rather than a user
+    who never finds the feature.
+    """
+    cli.main([])
+    usage = capsys.readouterr().err
+    for command in ("check", "review", "export"):
+        assert command in usage, command
+    for target in ("generic", "actual", "firefly", "beancount"):
+        assert target in usage, target
+    # The easy path first: --inbox must appear before --statement.
+    assert usage.index("--inbox") < usage.index("--statement")
+
+
+def test_installing_the_wrapper_without_the_program_says_which_is_missing(
+        tmp_path, monkeypatch):
+    """
+    `pip install crossfoot[ocr]` installs pytesseract and cannot install
+    tesseract, which is not a Python package. That left HAVE_TESSERACT true
+    and every photograph raising TesseractNotFoundError from the middle of a
+    run. Telling somebody "no OCR engine installed" would send them to
+    reinstall the thing they already have.
+    """
+    monkeypatch.setattr(ocr, "HAVE_TESSERACT", True)
+    monkeypatch.setattr(ocr, "HAVE_EASYOCR", False)
+    monkeypatch.setattr(ocr, "_tesseract_binary_works", lambda: False)
+
+    path = tmp_path / "receipt.jpg"
+    path.write_bytes(b"\xff\xd8\xff\xe0")
+    with pytest.raises(ocr.NoEngine) as caught:
+        ocr.read_image(str(path))
+    message = str(caught.value)
+    assert "the tesseract program itself is not" in message
+    assert "pip cannot install it" in message
+    assert "ocr-heavy" in message            # the way out for a locked-down machine
+
+
+def test_available_reports_what_will_work_not_what_is_importable(monkeypatch):
+    """"Installed" is not the question a person cares about. "Will this work" is."""
+    monkeypatch.setattr(ocr, "HAVE_TESSERACT", True)
+    monkeypatch.setattr(ocr, "HAVE_EASYOCR", False)
+    monkeypatch.setattr(ocr, "_tesseract_binary_works", lambda: False)
+    assert ocr.available() == []
+
+    monkeypatch.setattr(ocr, "_tesseract_binary_works", lambda: True)
+    assert ocr.available() == ["tesseract"]
+
+
+def test_nothing_installed_at_all_names_both_ways_forward(tmp_path, monkeypatch):
+    monkeypatch.setattr(ocr, "HAVE_TESSERACT", False)
+    monkeypatch.setattr(ocr, "HAVE_EASYOCR", False)
+    monkeypatch.setattr(ocr, "_tesseract_binary_works", lambda: False)
+
+    path = tmp_path / "receipt.png"
+    path.write_bytes(b"\x89PNG")
+    with pytest.raises(ocr.NoEngine) as caught:
+        ocr.read_image(str(path))
+    assert "crossfoot[ocr]" in str(caught.value)
+    assert "crossfoot[ocr-heavy]" in str(caught.value)
+
+
+def test_the_model_download_is_opt_in_and_the_message_says_what_it_costs():
+    """
+    The first version blocked it outright on the reasoning that no network
+    request may ever happen. That conflated "your documents never leave this
+    machine" — the promise — with "nothing is ever fetched", and it killed the
+    only OCR path available to somebody who cannot install system software,
+    which is most people.
+    """
+    source = open(ocr.__file__, encoding="utf-8").read()
+    assert "CROSSFOOT_ALLOW_MODEL_DOWNLOAD" in source
+    assert "download_enabled=allowed" in source
+    # And the distinction is stated where somebody will actually read it.
+    # Matched on a phrase short enough to survive line wrapping — the first
+    # version of this assertion looked for a sentence the formatter had split
+    # across two lines, so it failed on prose that was present.
+    assert "receipts are involved" in source
+    assert "documents still never leave this" in source

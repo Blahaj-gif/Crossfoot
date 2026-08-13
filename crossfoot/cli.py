@@ -204,11 +204,25 @@ def main(argv=None) -> int:
         return check(argv[1:])
     if argv and argv[0] == "export":
         return export(argv[1:])
-    print("usage: crossfoot check  --statement FILE [--receipts DIR]\n"
-          "       crossfoot export --statement FILE [--receipts DIR]\n"
-          "                        [--to generic|actual|firefly|beancount] [--out FILE]\n"
-          "       crossfoot review --statement FILE [--receipts DIR]",
-          file=sys.stderr)
+    # The one screen a confused person is guaranteed to see, so it leads with
+    # the easy path. It told them to name two paths on the command line for a
+    # week after the one-folder intake shipped, because a patch silently failed
+    # to apply and nothing tested this text.
+    print(
+        "Crossfoot — check your receipts against your bank statement.\n"
+        "\n"
+        "  Put the bank export and the receipts in one folder, then:\n"
+        "\n"
+        "    crossfoot check  --inbox ./inbox      what does not add up\n"
+        "    crossfoot review --inbox ./inbox      look at it and decide\n"
+        "    crossfoot export --inbox ./inbox --to actual --out ledger.csv\n"
+        "\n"
+        "  Which file is the statement is worked out by reading them, so it\n"
+        "  does not matter what they are called.\n"
+        "\n"
+        "  --to    generic | actual | firefly | beancount\n"
+        "  If you keep them apart: --statement FILE --receipts DIR",
+        file=sys.stderr)
     return 2
 
 

@@ -59,10 +59,55 @@ class NoEngine(Exception):
     """No OCR backend is installed, so a photograph cannot be read at all."""
 
 
+#: Set to opt into a one-time model download for the pure-Python engine.
+#:
+#: The default is off, and the *reason* is worth being precise about, because
+#: the first version of this got it wrong. The promise this project makes is
+#: that **your documents never leave the machine**. It is not "no network
+#: request is ever made by anything" -- and conflating the two killed the only
+#: OCR path available to somebody who cannot install a system binary, which is
+#: most people. Fetching a public model file once is not sending anyone's
+#: receipts anywhere.
+#:
+#: So it stays off by default, because a tool that silently downloads several
+#: hundred megabytes on first run has surprised somebody, and it is on by one
+#: explicit environment variable with the message saying so.
+ALLOW_MODEL_DOWNLOAD = "CROSSFOOT_ALLOW_MODEL_DOWNLOAD"
+
+
+def _tesseract_binary_works() -> bool:
+    """
+    Whether the *engine* is there, not just the Python wrapper around it.
+
+    `pip install crossfoot[ocr]` installs pytesseract, which imports perfectly
+    on a machine with no tesseract binary anywhere -- so `HAVE_TESSERACT` was
+    True and every photograph raised TesseractNotFoundError out of the middle
+    of a run. The wrapper being importable says nothing about the program it
+    wraps, and asking it costs one subprocess at import.
+    """
+    if not HAVE_TESSERACT:
+        return False
+    try:                                    # pragma: no cover - environment
+        pytesseract.get_tesseract_version()
+        return True
+    except Exception:                       # pragma: no cover - environment
+        return False
+
+
 def available() -> list:
-    """Which engines are installed, for the UI to state rather than imply."""
-    return ([n for n, have in (("tesseract", HAVE_TESSERACT),
-                               ("easyocr", HAVE_EASYOCR)) if have])
+    """
+    Which engines can actually read a photograph right now.
+
+    "Installed" is not the question a person cares about; "will this work" is.
+    Tesseract must have its binary, and easyocr must have weights on disk or
+    permission to fetch them once.
+    """
+    engines = []
+    if _tesseract_binary_works():
+        engines.append("tesseract")
+    if HAVE_EASYOCR:
+        engines.append("easyocr")
+    return engines
 
 
 def is_image(path: str) -> bool:
@@ -119,17 +164,33 @@ def read_image(path: str) -> dict:
     that silently produces no lines becomes a charge marked *unchecked* for a
     reason nobody can act on; the exception names the package to install.
     """
-    if HAVE_TESSERACT:
+    if _tesseract_binary_works():
         return _read_with_tesseract(path)
     if HAVE_EASYOCR:
         return _read_with_easyocr(path)
+
+    name = os.path.basename(path)
+    if HAVE_TESSERACT:
+        # The wrapper is installed and the program it wraps is not, which is
+        # what `pip install crossfoot[ocr]` alone leaves you with. Saying "no
+        # OCR engine installed" here would send somebody to reinstall the
+        # thing they already have.
+        raise NoEngine(
+            f"{name} is a photograph. pytesseract is installed but the "
+            "tesseract program itself is not — pip cannot install it, because "
+            "it is not a Python package.\n"
+            "  Windows: winget install UB-Mannheim.TesseractOCR\n"
+            "  macOS:   brew install tesseract\n"
+            "  Linux:   apt install tesseract-ocr\n"
+            "Or, if you cannot install software on this machine, "
+            "`pip install 'crossfoot[ocr-heavy]'` needs nothing but Python.")
     raise NoEngine(
-        f"{os.path.basename(path)} is a photograph and no OCR engine is "
-        "installed. `pip install 'crossfoot[ocr]'` and install the tesseract "
-        "binary for your platform, or `pip install 'crossfoot[ocr-heavy]'` for "
-        "a pure-Python engine that needs no system package. Without one, this "
-        "file cannot be read at all — which is why it is refused rather than "
-        "quietly treated as an empty receipt.")
+        f"{name} is a photograph and nothing here can read one yet.\n"
+        "  pip install 'crossfoot[ocr]'        - fast, needs the tesseract program\n"
+        "  pip install 'crossfoot[ocr-heavy]'  - slower, needs nothing but Python\n"
+        "Until then this file is refused rather than treated as an empty "
+        "receipt, because reading a photograph as text produces noise that a "
+        "parser will find amounts in.")
 
 
 def _read_with_tesseract(path):          # pragma: no cover - needs the binary
@@ -156,11 +217,23 @@ def _read_with_tesseract(path):          # pragma: no cover - needs the binary
 def _read_with_easyocr(path):            # pragma: no cover - needs the weights
     global _reader
     if _reader is None:
-        # download_enabled=False on purpose: the weights must already be on
-        # this machine. An OCR engine that fetches a model the first time it
-        # runs is an OCR engine that made a network request, and the promise
-        # is that nothing here does.
-        _reader = easyocr.Reader(["en"], gpu=False, download_enabled=False)
+        allowed = os.getenv(ALLOW_MODEL_DOWNLOAD, "").strip().lower() in (
+            "1", "true", "yes")
+        try:
+            _reader = easyocr.Reader(["en"], gpu=False,
+                                     download_enabled=allowed)
+        except Exception as e:
+            # Off by default because several hundred megabytes arriving
+            # unannounced is a surprise, not because fetching a public model
+            # file would break the promise. The promise is about *your
+            # documents*, and no document is involved in downloading a model.
+            raise NoEngine(
+                f"easyocr has no language model on this machine yet ({e}).\n"
+                f"Set {ALLOW_MODEL_DOWNLOAD}=1 to let it fetch one: about "
+                "100 MB, once, from easyocr's own release, and none of your "
+                "receipts are involved. Your documents still never leave this "
+                "machine; that promise is about them, not about a model file."
+            ) from e
     words = []
     for index, (box, text, confidence) in enumerate(_reader.readtext(path)):
         text = (text or "").strip()
