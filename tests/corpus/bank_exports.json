@@ -1,0 +1,134 @@
+[
+ {
+  "file": "csv2ofx--amazon.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--capitalone.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--creditunion.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--default.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--gls.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--ingesp.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--mint.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--mint_extra.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--mint_headerless.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--n26-fr.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--outbank.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--payoneer.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--pcmastercard.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "csv2ofx--schwab-checking-baltest-case1.csv",
+  "source_project": "csv2ofx"
+ },
+ {
+  "file": "gnucash--sample1.csv",
+  "source_project": "gnucash"
+ },
+ {
+  "file": "hledger--sample.csv",
+  "source_project": "hledger"
+ },
+ {
+  "file": "ofxparse--account_listing_aggregation.ofx",
+  "source_project": "ofxparse"
+ },
+ {
+  "file": "ofxparse--anzcc.ofx",
+  "source_project": "ofxparse"
+ },
+ {
+  "file": "ofxparse--bank_medium.ofx",
+  "source_project": "ofxparse"
+ },
+ {
+  "file": "ofxparse--bank_small.ofx",
+  "source_project": "ofxparse"
+ },
+ {
+  "file": "ofxparse--checking.ofx",
+  "source_project": "ofxparse"
+ },
+ {
+  "file": "ofxparse--error_message.ofx",
+  "source_project": "ofxparse"
+ },
+ {
+  "file": "ofxparse--fidelity-savings.ofx",
+  "source_project": "ofxparse"
+ },
+ {
+  "file": "ofxparse--fidelity.ofx",
+  "source_project": "ofxparse"
+ },
+ {
+  "file": "ofxparse--investment_401k.ofx",
+  "source_project": "ofxparse"
+ },
+ {
+  "file": "ofxparse--investment_medium.ofx",
+  "source_project": "ofxparse"
+ },
+ {
+  "file": "ofxparse--multiple_accounts.ofx",
+  "source_project": "ofxparse"
+ },
+ {
+  "file": "ofxparse--multiple_accounts2.ofx",
+  "source_project": "ofxparse"
+ },
+ {
+  "file": "ofxtools--br_nubank_cc.ofx",
+  "source_project": "ofxtools"
+ },
+ {
+  "file": "ofxtools--invstmtrs.ofx",
+  "source_project": "ofxtools"
+ },
+ {
+  "file": "ofxtools--profrs.ofx",
+  "source_project": "ofxtools"
+ },
+ {
+  "file": "ofxtools--stmtrs.ofx",
+  "source_project": "ofxtools"
+ },
+ {
+  "file": "ofxtools--stmtrs_euro.ofx",
+  "source_project": "ofxtools"
+ }
+]

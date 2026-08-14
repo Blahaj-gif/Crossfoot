@@ -489,3 +489,40 @@ def test_the_repository_ignores_the_default_drop_folder():
     assert result.returncode == 0, (
         f"{probe} is not ignored — a user's bank statement would appear in "
         "git status")
+
+
+# --------------------------------------------------------------------------
+# A dropped file's name is a path, not a name
+# --------------------------------------------------------------------------
+
+def test_a_dropped_file_lands_in_the_folder_it_was_dropped_in(tmp_path):
+    target = I.dropped_file_path(str(tmp_path), "statement.csv")
+    assert target == os.path.join(os.path.abspath(str(tmp_path)), "statement.csv")
+
+
+@pytest.mark.parametrize("name", [
+    "../../.bashrc",
+    r"..\..\Windows\System32\drivers\etc\hosts",
+    "/etc/passwd",
+    "subfolder/statement.csv",
+    "..",
+    ".",
+    "",
+    "   ",
+])
+def test_a_name_that_is_really_a_path_is_refused(tmp_path, name):
+    """
+    A browser supplies the name of an upload and it is written straight to
+    disk. Without this, `os.path.join(inbox, "../../.bashrc")` leaves the
+    folder entirely and overwrites whatever is there — a directory traversal in
+    a program whose whole pitch is that it touches nothing but the folder you
+    gave it.
+    """
+    assert I.dropped_file_path(str(tmp_path), name) is None
+
+
+def test_an_awkward_but_honest_filename_still_works(tmp_path):
+    """Refusing paths must not refuse the ordinary names a phone produces."""
+    for name in ("IMG_2043 (1).jpg", "download (3).csv", "état de compte.csv",
+                 "receipt.2026-01-05.pdf"):
+        assert I.dropped_file_path(str(tmp_path), name) is not None

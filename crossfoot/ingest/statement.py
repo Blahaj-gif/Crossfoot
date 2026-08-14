@@ -38,13 +38,27 @@ _HEADERS = {
              "date posted", "trans date", "value date", "booking date"),
     "description": ("description", "details", "narrative", "payee", "merchant",
                     "memo", "particulars", "transaction description", "name"),
-    "amount": ("amount", "value", "transaction amount", "amt"),
+    "amount": ("amount", "value", "transaction amount", "amt",
+               # Measured against 33 real exports from open-source importers.
+               # A bank that writes its own language writes all of it: the
+               # German column is "Betrag" beside "Buchungstag" and
+               # "Kontostand", and none of the three was here.
+               "betrag", "importe", "importo", "montant", "bedrag", "belopp",
+               "kwota", "valor", "iznos", "summa"),
     "debit": ("debit", "withdrawal", "withdrawals", "money out", "paid out",
-              "debit amount"),
+              "debit amount", "soll", "debito", "debit eur"),
     "credit": ("credit", "deposit", "deposits", "money in", "paid in",
-               "credit amount"),
-    "balance": ("balance", "running balance", "closing balance", "balance after"),
+               "credit amount", "haben", "credito"),
+    "balance": ("balance", "running balance", "closing balance", "balance after",
+                "kontostand", "saldo", "solde", "saldo contabile"),
 }
+
+#: What a bank might separate columns with. Comma first because it is the
+#: commonest, semicolon second because it is the European standard -- and it is
+#: the European standard *because* the comma is the decimal mark there, which
+#: is exactly the population this project already goes to some trouble to read.
+#: Reading their money format and not their column format was half a job.
+_DELIMITERS = (",", ";", "\t", "|")
 
 
 class StatementError(Exception):
@@ -145,20 +159,109 @@ def _normalise(header: str) -> str:
     return re.sub(r"[^a-z ]", " ", (header or "").lower()).strip()
 
 
+#: A currency in brackets after a column name is a note about the units, not
+#: part of the name. N26 exports `"Amount (EUR)"`, which normalised to
+#: `amount eur` and matched nothing, so a whole bank's exports were refused for
+#: having said which currency they were in.
+_QUALIFIER = re.compile(r"\s*[\(\[][^)\]]*[\)\]]\s*")
+
+
 def _column_map(fieldnames) -> dict:
     """
     Which column is which, by name. Unmapped columns are kept, not discarded --
     a reference number this does not understand is still evidence a human may
     need in the queue.
+
+    A header is tried whole first and only then with a bracketed qualifier
+    removed, so that a bank which really does name a column "Amount (Original)"
+    does not have it read as the amount by a rule meant for currencies.
     """
     found = {}
     for raw in fieldnames or []:
-        key = _normalise(raw)
-        for role, names in _HEADERS.items():
-            if key in names and role not in found:
-                found[role] = raw
+        candidates = [_normalise(raw)]
+        stripped = _normalise(_QUALIFIER.sub(" ", raw or ""))
+        if stripped and stripped != candidates[0]:
+            candidates.append(stripped)
+        for key in candidates:
+            matched = False
+            for role, names in _HEADERS.items():
+                if key in names and role not in found:
+                    found[role] = raw
+                    matched = True
+                    break
+            if matched:
                 break
     return found
+
+
+#: How far into a file the header is allowed to be. Real exports open with a
+#: blank line or two, or with an account number and a period — Mint's own
+#: sample starts with three empty lines. Bounded because "search until you find
+#: something that looks like a header" would eventually find one in the data.
+_HEADER_SEARCH_LINES = 8
+
+
+def _from_header(text: str, delimiter: str) -> str:
+    """
+    The file from its header row onwards, skipping any preamble above it.
+
+    `csv.DictReader` takes the first line as the header, whatever it is. Given
+    a file that opens with three blank lines it produces rows keyed on
+    `None` — which surfaced as "no amount column found" on a file whose header
+    plainly says Amount, and that is a confusing thing to be told.
+
+    A candidate has to map at least two known roles, one of which is a money
+    column, before it is believed. That is a deliberately high bar: reading the
+    wrong line as a header would misname every column in the file, and a
+    preamble line like "Account,12345" would otherwise qualify.
+    """
+    lines = text.splitlines()
+    for index, line in enumerate(lines[:_HEADER_SEARCH_LINES]):
+        if not line.strip():
+            continue
+        try:
+            fields = next(csv.reader(io.StringIO(line), delimiter=delimiter))
+        except (csv.Error, StopIteration):
+            continue
+        roles = _column_map(fields)
+        if len(roles) >= 2 and ({"amount", "debit", "credit"} & set(roles)):
+            return "\n".join(lines[index:])
+    # Nothing in the first few lines looks like a header. Hand the file back
+    # untouched so the existing error names the real problem — "no amount
+    # column found", with the list of what was looked for — rather than a
+    # complaint about a header this invented.
+    return text
+
+
+def _delimiter(text: str) -> str:
+    """
+    What this file separates columns with, decided from its own header row.
+
+    Sniffed rather than assumed, and the assumption it replaces was costly:
+    `csv.DictReader` defaults to a comma, so every semicolon-separated export
+    arrived as a single enormous column and was refused for having no amount
+    in it. That is the European convention, and it is the European convention
+    precisely *because* the comma is the decimal mark there — the same
+    population this module already goes to real trouble to read money for.
+    Reading their decimal separator and not their column separator was half a
+    job done twice.
+
+    Decided on the header line alone. A quoted description containing a
+    semicolon can outvote the real delimiter further down a file, and the
+    header is the one line a bank writes without free text in it.
+    """
+    line = next((l for l in text.splitlines() if l.strip()), "")
+    best, best_count = ",", 0
+    for candidate in _DELIMITERS:
+        # csv, not str.split, so a delimiter inside a quoted header does not
+        # count towards its own case.
+        try:
+            fields = next(csv.reader(io.StringIO(line), delimiter=candidate))
+        except (csv.Error, StopIteration):
+            continue
+        if len(fields) > best_count:
+            best, best_count = candidate, len(fields)
+    return best
 
 
 def parse_csv(text: str) -> dict:
@@ -170,7 +273,9 @@ def parse_csv(text: str) -> dict:
     carrying both a debit and a credit is refused rather than netted -- that is
     not a transaction, it is two columns misread as one row.
     """
-    rows = list(csv.DictReader(io.StringIO(text)))
+    delimiter = _delimiter(text)
+    rows = list(csv.DictReader(io.StringIO(_from_header(text, delimiter)),
+                               delimiter=delimiter))
     if not rows:
         raise StatementError("the file contains no rows")
 
@@ -358,6 +463,23 @@ def check_balance_walk(statement) -> Check:
     if len(lines) < 2:
         return Check("balance_walk", None,
                      detail="the export carries no running balance to walk")
+
+    # A running balance is only a chain if the rows are in the order the bank
+    # applied them. Found on a real ING España export whose rows arrive in no
+    # date order at all: the walk broke immediately and reported "a row is
+    # missing here", which was false, and — because a failed completeness check
+    # suppresses every finding — the whole audit went silent on a complete
+    # file. That is the tool being confidently wrong about somebody's bank
+    # statement, which is the one thing it is built not to do.
+    #
+    # Unrun, not failed. Nothing here can tell whether such a file is short;
+    # sorting it first would invent an order the bank did not state, and rows
+    # sharing a date have no order to recover.
+    dated = [l.get("date") for l in lines if l.get("date")]
+    if len(dated) == len(lines) and any(b < a for a, b in zip(dated, dated[1:])):
+        return Check("balance_walk", None,
+                     detail=("the rows are not in date order, so the running "
+                             "balance is not a chain and cannot be walked"))
 
     for previous, current in zip(lines, lines[1:]):
         expected = previous["balance"] + current["amount"]

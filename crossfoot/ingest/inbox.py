@@ -64,6 +64,43 @@ def make(folder: str = DEFAULT) -> str:
     return folder
 
 
+def dropped_file_path(folder: str, name: str):
+    """
+    Where a dropped file may be written, or None if that name is not a name.
+
+    A browser supplies the filename of an upload, and it is written straight to
+    disk — so it is not a name, it is a path. `os.path.join(inbox, "../../.bashrc")`
+    leaves the folder entirely and overwrites whatever is there. That is a
+    directory traversal in a program whose whole pitch is that it runs on your
+    own machine and touches nothing but the folder you gave it.
+
+    Reduced to its last component, then checked to sit directly inside the
+    folder regardless — basename alone is not a containment proof on every
+    platform, since a Windows name like `C:evil.txt` survives it and resolves
+    against the current drive.
+
+    Lives here rather than in the window, because the window is the one module
+    the tests are forbidden to import, and a guard the tests cannot reach is a
+    guard nobody has checked.
+    """
+    raw = (name or "").strip()
+    if not raw or raw in (".", ".."):
+        return None
+    # Refused rather than reduced. `os.path.basename` would turn
+    # "../../.bashrc" into ".bashrc" and write it, which is safe and is a
+    # silent rewrite of the name somebody gave — and a browser has no
+    # legitimate reason to send a path here, so the only files this rejects are
+    # the ones worth rejecting.
+    if any(sep in raw for sep in ("/", "\\", os.sep)) or os.path.splitdrive(raw)[0]:
+        return None
+    target = os.path.abspath(os.path.join(folder, raw))
+    # Belt and braces: whatever the platform makes of the name, it has to land
+    # directly in the folder that was asked for.
+    if os.path.dirname(target) != os.path.abspath(folder):
+        return None
+    return target
+
+
 def looks_like_a_statement(path: str) -> bool:
     """
     Whether this file is a bank export, decided by reading it.

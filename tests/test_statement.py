@@ -14,6 +14,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from crossfoot.ingest import statement as S
+from crossfoot.verdict import Cents
 
 
 def _csv(*rows, header="Date,Description,Amount,Balance"):
@@ -195,3 +196,120 @@ def test_a_walked_statement_is_verified_complete():
     parsed = S.parse_csv(_csv("2026-03-01,A,-10.00,90.00",
                               "2026-03-02,B,-20.00,70.00"))
     assert S.accept(parsed)["verified_complete"] is True
+
+
+# --------------------------------------------------------------------------
+# What 33 real bank exports found
+# --------------------------------------------------------------------------
+#
+# Fixtures from open-source importers — Capital One, Schwab, N26 France, GLS
+# Bank, ING España, Outbank, Mint, ANZ, Nubank. None of the formats below was
+# invented here, which is the point: the 22-receipt corpus taught that a corpus
+# written by the parser's own author measures agreement, not accuracy.
+
+def test_a_semicolon_separated_export_is_read():
+    """
+    The European convention, and it is the European convention *because* the
+    comma is the decimal mark there — the same population this module already
+    goes to real trouble to read money for. `csv.DictReader` defaults to a
+    comma, so every one of those files arrived as a single enormous column and
+    was refused for having no amount in it. Reading their decimal separator
+    and not their column separator was half a job done twice.
+    """
+    text = ("Datum;Beschreibung;Betrag;Kontostand\n"
+            "2026-01-05;Kaffee;-4,20;95,80\n"
+            "2026-01-06;Buch;-10,00;85,80\n")
+    statement = S.parse_csv(text)
+    assert len(statement["lines"]) == 2
+    assert int(statement["lines"][0]["amount"]) == -420
+    assert int(statement["lines"][0]["balance"]) == 9580
+
+
+def test_a_column_named_for_its_currency_is_still_the_amount():
+    """
+    N26 exports `"Amount (EUR)"`, which normalised to `amount eur` and matched
+    nothing — a whole bank's exports refused for having said which currency
+    they were in.
+    """
+    text = ('"Booking Date","Partner Name","Amount (EUR)"\n'
+            '2026-01-05,"Kaffee",-4.20\n'
+            '2026-01-06,"Buch",-10.00\n')
+    statement = S.parse_csv(text)
+    assert len(statement["lines"]) == 2
+    assert int(statement["lines"][0]["amount"]) == -420
+
+
+def test_a_qualifier_does_not_turn_an_unrelated_column_into_the_amount():
+    """The header is tried whole first, so this stays what it says it is."""
+    assert S._column_map(["Date", "Amount", "Amount (Original)"])["amount"] == "Amount"
+
+
+def test_blank_lines_above_the_header_are_skipped():
+    """
+    Mint's own sample opens with three of them. `csv.DictReader` took the first
+    blank line as the header and produced rows keyed on None, which surfaced as
+    "no amount column found" on a file whose header plainly says Amount.
+    """
+    text = "\n\n\nDate,Description,Amount\n2026-01-05,Kaffee,-4.20\n"
+    assert len(S.parse_csv(text)["lines"]) == 1
+
+
+def test_a_preamble_above_the_header_is_skipped():
+    """Real exports open with an account number and a period."""
+    text = ("Account,12345678\nPeriod,January 2026\n\n"
+            "Date,Description,Amount\n2026-01-05,Kaffee,-4.20\n")
+    assert len(S.parse_csv(text)["lines"]) == 1
+
+
+def test_a_file_with_no_amount_column_still_says_so():
+    """
+    The header search must not invent one. A file that genuinely has no money
+    column should get the original message naming what was looked for, not a
+    complaint about a header this picked out of the data.
+    """
+    with pytest.raises(S.StatementError) as raised:
+        S.parse_csv("Name,Note\nAda,hello\nGrace,hi\n")
+    assert "no amount column" in str(raised.value)
+
+
+def test_rows_out_of_date_order_leave_the_balance_walk_unrun_not_failed():
+    """
+    A false alarm found on a real ING España export, and the worst kind this
+    module can produce.
+
+    Its rows arrive in no date order, so the running balance is not a chain.
+    The walk broke on the first pair and reported "a row is missing here" —
+    false — and because a failed completeness check suppresses every finding,
+    the whole audit went silent on a complete file.
+
+    Unrun, not failed. Sorting first would invent an order the bank never
+    stated, and rows sharing a date have none to recover.
+    """
+    statement = {"lines": [
+        {"row": 1, "date": "2026-03-24", "amount": Cents(283), "balance": Cents(171990)},
+        {"row": 2, "date": "2026-04-08", "amount": Cents(269), "balance": Cents(244731)},
+        {"row": 3, "date": "2026-01-31", "amount": Cents(137), "balance": Cents(31888)},
+    ]}
+    check = S.check_balance_walk(statement)
+    assert check.ok is None
+    assert "not in date order" in check.detail
+
+
+def test_rows_in_date_order_are_still_walked():
+    """The guard must not switch the check off for ordinary files."""
+    statement = {"lines": [
+        {"row": 1, "date": "2026-01-05", "amount": Cents(-420), "balance": Cents(9580)},
+        {"row": 2, "date": "2026-01-06", "amount": Cents(-1000), "balance": Cents(7580)},
+    ]}
+    assert S.check_balance_walk(statement).ok is False
+
+
+def test_an_order_export_is_not_a_bank_statement():
+    """
+    Amazon's order history has a total, a tax and a date, and is not a
+    statement. Reading it as one would produce a page of findings about
+    somebody's shopping.
+    """
+    with pytest.raises(S.StatementError):
+        S.parse_csv("order id,order url,items,to,date,total,shipping,tax\n"
+                    "123,http://x,book,me,2026-01-05,10.00,0.00,1.00\n")

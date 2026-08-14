@@ -169,3 +169,38 @@ def test_a_pdf_that_is_not_a_pdf_at_all_does_not_raise(tmp_path):
     path.write_bytes(b"not a pdf, just some bytes")
     read = document.read(str(path))
     assert read["degraded"] is True
+
+
+# --------------------------------------------------------------------------
+# A PDF is an untrusted file
+# --------------------------------------------------------------------------
+
+def test_a_decompression_bomb_does_not_take_the_process_with_it():
+    """
+    A few kilobytes of deflate stream inflates to gigabytes, and
+    `zlib.decompress` has no ceiling. It does not take an attacker either: this
+    reads whatever somebody drops in a folder, and a receipt that arrived by
+    email is not a trusted file just because it arrived.
+
+    A megabyte of zeroes compresses to about a kilobyte; the real bomb is the
+    same trick with a much larger payload, and the bound is what stops it.
+    """
+    payload = zlib.compress(b"\0" * (4 * 1024 * 1024))
+    assert len(payload) < 20_000, "the fixture is not actually a bomb"
+
+    bomb = (b"%PDF-1.4\n4 0 obj << /Filter /FlateDecode >>\nstream\n"
+            + payload + b"\nendstream endobj\ntrailer << >>\n%%EOF\n")
+
+    original = pdf.MAXIMUM_STREAM
+    try:
+        pdf.MAXIMUM_STREAM = 64 * 1024
+        assert all(len(s) <= pdf.MAXIMUM_STREAM for s in pdf._streams(bomb))
+    finally:
+        pdf.MAXIMUM_STREAM = original
+
+
+def test_an_ordinary_receipt_is_nowhere_near_the_bound(tmp_path):
+    """The guard must not truncate a real document."""
+    path = tmp_path / "long.pdf"
+    path.write_bytes(_pdf(_drawing(*(RECEIPT * 200))))
+    assert int(R.as_receipt(R.extract(document.read(str(path))["text"]))["total"]) == 1731

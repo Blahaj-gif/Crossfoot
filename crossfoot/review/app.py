@@ -108,7 +108,13 @@ def _intake(inbox: str):
              "does not matter what they are called.")
     for upload in dropped or []:
         I.make(inbox)
-        target = os.path.join(inbox, upload.name)
+        # The browser supplies this name and it is written straight to disk, so
+        # it is a path rather than a name. Checked in `ingest.inbox`, where a
+        # test can reach it.
+        target = I.dropped_file_path(inbox, upload.name)
+        if target is None:
+            st.warning(f"refused `{upload.name}` — that is a path, not a file name")
+            continue
         if not os.path.exists(target):
             with open(target, "wb") as fh:
                 fh.write(upload.getbuffer())

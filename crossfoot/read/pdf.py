@@ -50,12 +50,27 @@ SCAN = "scan"
 EMPTY = "empty"
 
 
+#: The most any single compressed stream is allowed to inflate to.
+#:
+#: `zlib.decompress` on attacker-supplied bytes is a decompression bomb: a few
+#: kilobytes of deflate stream expands to gigabytes and the process dies. It
+#: does not take an attacker, either — this reads whatever a person drops in a
+#: folder, and a receipt arriving by email is not a trusted file just because
+#: it arrived. Sixty-four megabytes is far more than any receipt or invoice
+#: needs and small enough that a hostile file fails instead of the machine.
+MAXIMUM_STREAM = 64 * 1024 * 1024
+
+
 def _streams(data: bytes):
-    """Every stream in the file, inflated where it is inflated."""
+    """Every stream in the file, inflated where it is inflated, up to a bound."""
     for match in re.finditer(rb"stream\r?\n(.*?)endstream", data, re.S):
         chunk = match.group(1)
         try:
-            yield zlib.decompress(chunk)
+            # Bounded rather than `zlib.decompress`, which has no ceiling.
+            # Anything past the limit is dropped rather than raising: a
+            # genuinely enormous page is a page this cannot read, and that is
+            # the same outcome as a scan.
+            yield zlib.decompressobj().decompress(chunk, MAXIMUM_STREAM)
         except zlib.error:
             yield chunk                      # already flat, or a filter we skip
 

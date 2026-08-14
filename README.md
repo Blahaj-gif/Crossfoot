@@ -1,10 +1,17 @@
 # Crossfoot
 
-Receipts and statements in. A **verdict** out, not a category.
+Your bank statement in. A **verdict** out, not a category.
 
-Every other receipt tool draws you a pie chart of where the money went. The
-chart is the part that does not matter, because it is drawn on numbers nobody
-checked. Crossfoot's product is the check.
+Every other money tool draws you a pie chart of where it went. The chart is the
+part that does not matter, because it is drawn on numbers nobody checked.
+Crossfoot's product is the check — and the third answer, *I could not tell*,
+which no other tool will give you.
+
+```
+crossfoot audit statement.csv
+```
+
+No account, no bank connection, no receipts, nothing optional installed.
 
 > *Crossfooting* is the auditor's practice of verifying that a row's total and
 > its column's total agree: two independently derived numbers about the same
@@ -41,7 +48,7 @@ all. It feeds them.
 
 ## Status
 
-All six steps exist. 563 tests, including a corpus of 22 receipts run both as
+All six steps exist. 584 tests, including a corpus of 22 receipts run both as
 text and as images through Tesseract, and 55 photographs of real receipts. See
 *What it actually gets right* below for the numbers, including the ones that
 are bad.
@@ -162,12 +169,18 @@ no code capable of sending them. CI asserts the absence of the imports.
 | *(none)* | CSV and OFX statements, plain-text receipts. The checking layer is arithmetic and stdlib — nobody should install a machine-learning stack to reconcile numbers they already have. |
 | `crossfoot[ocr]` | Photographs, via Tesseract. Needs the tesseract binary; fast and accurate, and it reports a confidence and a rectangle per word. |
 | `crossfoot[ocr-heavy]` | Photographs with no system package, via EasyOCR. Much larger install. |
-| `crossfoot[read]` | PDFs, via Docling. |
+| `crossfoot[read]` | Nothing you need. Docling was the declared PDF reader and never earned its place — see below. |
 | `crossfoot[ui]` | The review window. |
 
-Nothing degrades silently. A PDF read without Docling, or a photograph the
-engine was unsure about, is marked **degraded** and its numbers are shown as
-evidence rather than used as figures. A photograph with no OCR engine installed
+**PDFs need no extra at all now.** Measured on 24 real ones: 16 were scans and
+6 carried a text layer. A text-layer PDF gives up its numbers to sixty lines of
+`zlib` and a regular expression; a scanned PDF is a photograph in a wrapper and
+inherits everything below. Docling was unnecessary for the first and
+insufficient for the second, so it is no longer the reader.
+
+Nothing degrades silently. A scanned PDF, or a photograph the engine was unsure
+about, is marked **degraded** and its numbers are shown as evidence rather than
+used as figures. A photograph with no OCR engine installed
 is *refused*, because reading a JPEG as text yields binary noise that a parser
 will cheerfully find amounts in.
 
@@ -195,6 +208,36 @@ and the *ledger reader*, never the writer, which is the separation CI already
 enforces.
 
 ## What it actually gets right
+
+### Real bank exports
+
+33 exports from open-source importers — Capital One, Schwab, N26 France, GLS
+Bank, ING España, Outbank, Mint, ANZ, Nubank — none of whose formats this
+project chose.
+
+| | |
+|---|---|
+| parsed | **19 of 33** |
+| a field that cannot be traced back to its row | **0** |
+| rows silently dropped | **0** |
+| refusals that are wrong | **0** — all 14 are order exports, investment statements, empty files, or dates that genuinely cannot be resolved |
+
+Every parsed amount and date was checked to appear in the raw text of the row it
+came from. That is weaker than hand-keying — it cannot catch a parser that picks
+the *wrong* number off a row — and it is what caught the four bugs below.
+
+Four coverage bugs, all in the parser's front door, all found by real files:
+**semicolon-separated exports** were read as a single column (the European
+convention, and it is the European convention *because* the comma is the decimal
+mark there); **`Amount (EUR)`** matched no column, so a whole bank's exports were
+refused for saying which currency they were in; **a header below a blank line or
+a preamble** was not found; and — the one that mattered — **a running balance was
+walked on rows that were not in date order**, reporting "a row is missing here"
+on a complete file and suppressing every finding with it. That last is the tool
+being confidently wrong about somebody's bank statement, which is the one thing
+it is built not to do.
+
+### Receipts
 
 Two measurements, both on the same 22-receipt corpus, whose expected values
 were written by reading the paper rather than by running the parser.
@@ -309,6 +352,43 @@ The photograph path is measured, honest and not ready.
 
 If you photograph a few of your own receipts and they come out wrong, that is
 still the most useful bug report this project can receive.
+
+## Why not Expensify, Dext, QuickBooks or Smart Receipts
+
+The blunt half first: **for getting a receipt into a computer, they are better
+and you should use one of them.** All four read a photographed receipt better
+than one in fifty-five, because they have cloud OCR and two of them have people
+checking the output. That is the measurement below, not an opinion, and no
+amount of work here closes it.
+
+So this does not compete there. What is left is a different job:
+
+| | built to | for |
+|---|---|---|
+| Expensify | submit spending for reimbursement | employees, teams |
+| Dext | get client paperwork into a bookkeeper's ledger | accountants |
+| QuickBooks | match spending to accounts, via a bank feed | businesses |
+| Wally, Smart Receipts | keep and export receipt images | individuals |
+| **Crossfoot** | **say what is wrong with your own statement** | individuals |
+
+Every one of them is built to get data *in*. None is built to tell you the data
+is wrong. Four things follow:
+
+1. **No bank connection, ever.** QuickBooks reconciles by connecting to your
+   bank; the free web tools that audit statements want you to upload one. This
+   reads a file you already have, on a machine you already own, and there is no
+   HTTP client in the core to do anything else with it.
+2. **It refuses.** The others are optimised to always produce an answer, because
+   an expense report with a blank line is a failed product. This has a third
+   state and a rule that *unchecked is never counted as clean*.
+3. **First run, nothing installed, no receipts.** `crossfoot audit
+   statement.csv` needs no account and no subscription. All five need you to
+   have been using them already.
+4. **No vendor.** The decision log is one hash-chained file on your disk.
+
+The nearest real competitors are not on that list. They are the free web tools
+that scan an uploaded statement for recurring charges, and the answer to those
+is that you are uploading your bank statement to a stranger.
 
 ## The wall
 
