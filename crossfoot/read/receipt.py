@@ -204,14 +204,26 @@ def _amounts_in(line: str, mark: str = ""):
 #: which by the rule below beats the real one. A photographed receipt from Papua
 #: New Guinea reported a total of 1.77 against a charge of 19.50.
 #:
-#: The tell is a word of inclusion sitting next to a tax word. "TOTAL" with
-#: "INCLUDES" and "VAT" on the same line states the tax; the amount is the tax
-#: amount, and labelling it as such is not a workaround but the correct reading.
+#: The tell is the word **of**, and getting that wrong is a bug this shipped
+#: with. The first version matched any inclusion word beside any tax word,
+#: which is two different sentences:
+#:
+#:     TOTAL INCLUDES VAT OF   1.77     the amount is the *tax*
+#:     TOTAL (incl. VAT)      17.31     the amount is the *total*
+#:     Totaal incl. BTW        2,10     the amount is the *total*
+#:
+#: The first names a figure and says what it is. The other two name the total
+#: and note in passing that tax is already inside it. Reading 17.31 as a tax
+#: loses the total on a very large share of the world's receipts — every
+#: European one that prints its total this way — and two tests written
+#: alongside that rule asserted the wrong answer, which is how it survived.
+#:
+#: So the amount is the tax only when the tax word is followed by "of" or a
+#: colon, or when the line opens with an of-which word — "whereof", "davon",
+#: "waarvan", "dont" — which carry the same meaning in one word.
 _INCLUSIVE_TAX = re.compile(
-    r"\b(includes?|incl|inclusive|einschl|inkl|whereof|of which|dont)\b"
-    r"[^a-z]*\b(vat|tax|gst|hst|tva|mwst|ust|btw|iva|moms|alv|qst)\b"
-    r"|\b(vat|tax|gst|hst|tva|mwst|ust|btw|iva|moms|alv|qst)\b[^a-z]*"
-    r"\b(included|inclusive)\b")
+    r"\b(whereof|of which|dont|davon|waarvan|hiervan)\b"
+    r"|\b(vat|tax|gst|hst|tva|mwst|ust|btw|iva|moms|alv|qst)\b\s*(?:of\b|:)")
 
 
 def _label_on(line: str):

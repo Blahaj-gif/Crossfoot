@@ -178,17 +178,44 @@ declared total match the rows, is there a gap in the dates. A statement that
 fails this is said to be incomplete *and nothing else is reported from it*,
 because findings from a partial export are worse than no findings.
 
-**2. What looks wrong.** Ranked by money at risk, not by count.
+**2. What looks wrong.** Ranked by money at risk, not by count. Built, and this
+is its real output on a six-month statement:
 
 ```
-  £71.98   PAID TWICE          NOW TV          two charges, 14 Mar and 14 Mar
-  £14.99   PRICE ROSE          Spotify         £11.99 → £14.99 from 02 Apr
-  £9.99    STILL CHARGING      Audible         12 months, last used …unknown
-  £4.50    NEW RECURRING       unrecognised    3 charges, monthly, since Jan
+  bank.csv: 60 rows, whole
+
+    What looks wrong — 974.07 at stake
+          842.19  PAID TWICE     two charges of 842.19 at this merchant, the
+                                 same day (2026-04-22 and 2026-04-22)
+           95.88  NEW RECURRING  audible uk started charging 7.99 monthly on
+                                 2026-03-17 — 95.88 a year
+           36.00  PRICE ROSE     spotify went from 11.99 to 14.99 on
+                                 2026-04-03 — 36.00 a year
+
+    Recurring charges — 14,105.88 a year, not a finding, just what is there
+       13,200.00/yr  1,100.00 × 6   rent wilson properties  since 2026-01-02
+          510.24/yr     42.52 × 6   thames water  since 2026-01-11
+          179.88/yr     14.99 × 6   spotify  since 2026-01-03
+          119.88/yr      9.99 × 6   now tv entertain  since 2026-01-05
+           95.88/yr      7.99 × 4   audible uk  since 2026-03-17
 ```
 
-Each row opens to the transactions it is made of. Nothing is deleted, nothing
-is auto-categorised, and no advice is given about whether to cancel anything.
+Nothing is deleted, nothing is auto-categorised, and no advice is given about
+whether to cancel anything.
+
+**One finding in the first draft of this document did not survive being
+built.** It listed `STILL CHARGING — Audible — 12 months, last used …unknown`,
+and the tool cannot know whether you use Audible. That is a heuristic wearing a
+fact's clothes, in a project whose rule is that a finding is something the
+statement states. Every commercial statement-audit product ships that finding
+and it is the part of them that is guesswork.
+
+What replaced it is the **recurring inventory** above: the same list, presented
+as what is there rather than as an accusation, with the annual figure — which
+is arithmetic — instead of an insinuation about whether it is wanted. It is
+deliberately not counted in "at stake", because claiming somebody's whole
+subscription bill is at risk is the kind of exaggeration that stops the other
+numbers being believed.
 
 **3. What has nothing behind it.** Every charge over a threshold the person
 sets, in one of three states, and the third is the point of the whole project:
@@ -328,21 +355,109 @@ Firefly III discussions, r/selfhosted.
 something. Not reached in 8 weeks → this is a tool for its author, and the
 README says so.*
 
-**Stage 3 — documents as evidence.** Folder matching and the three-state
-verdict, with receipt arithmetic where a document parses. Paperless-ngx
-linking if Stage 2 surfaced anyone who wants it.
+**Stage 3 — documents as evidence, and deliberately nothing more.**
+
+Reduced after asking the competitor question properly. Against Expensify, Dext,
+QuickBooks and Smart Receipts, **capture is a fight this loses on measurement,
+not on opinion** — all four read a receipt better than one in fifty-five,
+because they have cloud OCR and, in Dext's and Expensify's case, humans behind
+it. Any version of Stage 3 shaped like a capture product is competing where the
+evidence says it is worst.
+
+So Stage 3 matches documents that **already exist** — a folder, or a
+Paperless-ngx link — and never asks anybody to photograph anything. The
+three-state count is the deliverable, and it already exists in the queue's
+headline, which has never been allowed to round the unchecked away.
 *Gate: no charge ever marked documented against the wrong document.*
 
-**Stage 4 — measure the PDF path properly, then decide about it.** Install
-docling, build a real corpus of PDF invoices, measure it the way the
-photographs were measured. Only then does Option A become choosable.
-*Gate: if PDFs read no better than photographs, drop document reading entirely
-and keep matching by filename, amount and date.*
+**Stage 4 — measure the PDF path properly, then decide about it. Done, and the
+answer was neither yes nor no.**
+
+Measured on 24 real PDFs from Commons before installing anything: **16 scans,
+6 text-layer, 2 mixed.** A PDF is two entirely different files wearing one
+extension, and which one you have decides everything.
+
+- A **text-layer** PDF draws its characters as text. The numbers are in the
+  file. Sixty lines of `zlib` and a regular expression pull thousands of words
+  out of one, and the whole receipt path then works on it with **no dependency
+  at all**.
+- A **scanned** PDF draws one image and stops. It is a photograph in a wrapper
+  and inherits every number from the 55-receipt measurement.
+
+So `docling` was the wrong dependency in both directions at once: unnecessary
+for the first kind, and insufficient for the second, where it would OCR the
+page and reproduce the one-in-fifty-five result at the cost of a deep ML stack.
+It is no longer the PDF reader. `crossfoot/read/pdf.py` is, it is standard
+library only, and a scan is refused with the reason rather than returned as
+empty text.
+
+*Honest limit:* those 24 PDFs are archival documents, because those are the
+ones that are freely licensed. The population this targets — an order
+confirmation, a SaaS invoice, a phone bill — is very likely more text-layer
+than that sample. "Very likely" is not a measurement and this is not claiming
+it is one.
+
+*What this does to Option A:* it becomes partly choosable and much cheaper than
+it looked. Not a bet on a heavy dependency — a reader that already exists, for
+the half of PDFs that can be read, with the other half refused by name.
 
 **Not planned:** camera improvements, a vision model, email intake, a server,
 a bank connection, multi-receipt segmentation.
 
 ---
+
+## Part 3 — Why anyone would pick this over Expensify
+
+The question deserves the blunt half first.
+
+**For getting a receipt into a computer, they would not, and should not.**
+Expensify, Dext, QuickBooks and Smart Receipts all read a photographed receipt
+better than one in fifty-five. They have cloud OCR, and two of them have people
+checking the output. That is not a matter of taste; it is the 55-receipt
+measurement, and no amount of work on this codebase closes it. Anyone whose
+problem is "I have a pile of paper and I need the numbers in a system" should
+use one of those.
+
+That is why the plan above stops competing there. What is left is a different
+job, and on that job the four are not competitors at all:
+
+| | what it is for | who it is for |
+|---|---|---|
+| **Expensify** | submitting spending for reimbursement | employees, teams |
+| **Dext** | getting client paperwork into a bookkeeper's ledger | accountants |
+| **QuickBooks** | matching spending to an accounting ledger, via a bank feed | businesses |
+| **Wally, Smart Receipts** | keeping and exporting receipt images | individuals |
+| **Crossfoot** | telling you what is wrong with your own statement | individuals |
+
+Every one of them is built to get data *in*. None is built to tell you the data
+is wrong. That difference produces four things this can do that they cannot:
+
+1. **No bank connection, ever.** QuickBooks reconciles by connecting to your
+   bank. The web tools that do statement audits ask you to upload the
+   statement. This reads a file you already have, on your own machine, with no
+   network code in the core at all — and a bank statement is the most sensitive
+   document in the story.
+2. **It refuses.** All five of those products are optimised to always produce
+   an answer, because an expense report with a blank line is a failed product.
+   This one has a third state and a rule that *unchecked is never counted as
+   clean*. That is worth almost nothing to somebody filing expenses and quite a
+   lot to somebody asking whether their own account is right.
+3. **It works on the first run, with nothing installed and no receipts.**
+   `crossfoot audit statement.csv` needs no account, no subscription, no
+   photograph and no optional dependency. Every one of the five needs you to
+   have been using it already.
+4. **It is yours.** No subscription, no vendor, no account to close, and the
+   decision log is one hash-chained file on your disk.
+
+**Where that leaves the honest pitch:** not "a better receipt scanner", which
+would be false, but *"the thing that reads your bank statement and refuses to
+tell you it is fine when it does not know"*. The nearest real competitors are
+not on the list above — they are the free web tools that scan an uploaded
+statement for recurring charges, and the answer to those is that you are
+uploading your bank statement to a stranger.
+
+**And the part of this that is still unproven:** whether that pitch moves
+anybody. It is a real differentiator; it is not yet an evidenced demand.
 
 ## The gate that still has not been run
 

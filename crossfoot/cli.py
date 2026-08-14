@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 
+from crossfoot import audit as A
 from crossfoot import doctor as DOC
 from crossfoot.export import rows as E
 from crossfoot.export import targets as T
@@ -53,6 +54,97 @@ def _report_inbox(sorted_folder):
         print(f"skipped {name}: {why}", file=sys.stderr)
     print(f"inbox: 1 statement, {len(sorted_folder['receipts'])} receipts",
           file=sys.stderr)
+
+
+def audit(argv=None) -> int:
+    """
+    The statement alone. No receipts, no OCR, nothing optional installed.
+
+    This is the command that works on the first run, before anybody has
+    photographed anything — and after the 55-receipt measurement it is the one
+    whose inputs cannot be misread, because a bank export is a CSV.
+    """
+    parser = argparse.ArgumentParser(prog="crossfoot audit")
+    parser.add_argument("statement", nargs="?", help="a CSV or OFX bank export")
+    parser.add_argument("--statement", dest="named")
+    parser.add_argument("--inbox", help="a folder; the statement is found by content")
+    parser.add_argument("--window", type=int, default=None,
+                        help="days apart two identical charges can be (default 3)")
+    args = parser.parse_args(argv)
+
+    path = args.statement or args.named
+    sorted_folder = None
+    if not path and args.inbox:
+        sorted_folder = I.sort(args.inbox)
+        if sorted_folder["problem"]:
+            print(sorted_folder["problem"], file=sys.stderr)
+            return 2
+        path = sorted_folder["statements"][0]
+    if not path:
+        parser.error("give a statement file, or --inbox FOLDER")
+
+    try:
+        with open(path, "r", encoding="utf-8-sig", errors="replace") as handle:
+            text = handle.read()
+        statement = (S.parse_ofx(text) if "<OFX" in text[:2000].upper()
+                     else S.parse_csv(text))
+    except S.StatementError as e:
+        print(f"Cannot read {os.path.basename(path)}: {e}", file=sys.stderr)
+        return 2
+    except OSError as e:
+        print(f"Cannot open {path}: {e}", file=sys.stderr)
+        return 2
+
+    found = A.audit(statement, args.window)
+    _print_audit(found, os.path.basename(path))
+    # 1 when there is something to act on, 0 when there is not, 2 when the file
+    # could not be trusted. A script can branch on it.
+    if found["suppressed"]:
+        return 2
+    return 1 if found["findings"] else 0
+
+
+def _print_audit(found, name):
+    state = found["completeness"]["state"]
+    print(f"{name}: {found['rows']} rows, {state}")
+
+    if found["suppressed"]:
+        print()
+        print("  " + found["why"])
+        print()
+        print("  Nothing else is reported from this file. A duplicate found in")
+        print("  a statement with rows missing is an artefact of the gap, and")
+        print("  the rows that were never read cannot be reported as missing —")
+        print("  so a short, clean page here would be a misleading one.")
+        return
+
+    if state == A.UNVERIFIABLE:
+        print(f"  {found['completeness']['why']}")
+
+    print()
+    if found["findings"]:
+        print(f"  What looks wrong — {_money(found['at_risk'])} at stake")
+        for finding in found["findings"]:
+            label = {"paid_twice": "PAID TWICE",
+                     "price_rose": "PRICE ROSE",
+                     "new_recurring": "NEW RECURRING"}[finding["kind"]]
+            print(f"    {_money(finding['at_risk']):>10}  {label:<14} "
+                  f"{finding['why']}")
+    else:
+        print("  Nothing looks wrong.")
+
+    if found["recurring"]:
+        print()
+        # Deliberately not called a finding. Whether somebody still wants a
+        # subscription is not in the statement, and a tool that says "you are
+        # not using this" is guessing at the one thing it cannot see.
+        yearly = sum(int(r["a_year"]) for r in found["recurring"])
+        print(f"  Recurring charges — {_money(yearly)} a year, "
+              f"not a finding, just what is there")
+        for item in found["recurring"]:
+            print(f"    {_money(item['a_year']):>10}/yr  "
+                  f"{_money(item['latest']):>8} × {item['charges']:<3} "
+                  f"{item['merchant']}  since {item['first_seen']}")
 
 
 def check(argv=None) -> int:
@@ -202,6 +294,8 @@ def main(argv=None) -> int:
 
     if argv and argv[0] == "review":
         return review(argv[1:])
+    if argv and argv[0] == "audit":
+        return audit(argv[1:])
     if argv and argv[0] == "check":
         return check(argv[1:])
     if argv and argv[0] == "export":
@@ -250,10 +344,16 @@ def _usage() -> str:
     the one-folder intake shipped.
     """
     return (
-        "Crossfoot - check your receipts against your bank statement.\n"
+        "Crossfoot - check your bank statement, and your receipts against it.\n"
+        "\n"
+        "  crossfoot audit statement.csv         what is wrong with the\n"
+        "                                        statement alone: paid twice,\n"
+        "                                        price rises, new subscriptions\n"
         "\n"
         "  crossfoot                             open the window (does everything)\n"
         "  crossfoot doctor                      what this computer can read\n"
+        "\n"
+        "  `audit` needs nothing installed and no receipts. Start there.\n"
         "\n"
         "  Or from the command line, with one folder holding both:\n"
         "\n"

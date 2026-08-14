@@ -29,7 +29,7 @@ here is a liability, not a result, and it is never counted as clean.
 | | Built | Refuses to |
 |---|---|---|
 | 1 | **Drop.** Drag the bank export and the receipts into the window, or into one folder. Which file is which is decided by *reading* them, so their names do not matter. | accept a statement whose own running balance does not step correctly row to row, or whose rows do not sum to its declared period total: that export is truncated, and every verdict downstream would rest on a partial ledger. |
-| 2 | **Read.** Docling for PDFs, Tesseract or EasyOCR for photographs, plain text otherwise. Every field keeps its confidence, the line it came from, and (from a photograph) the rectangle on the page. | use a total it read below threshold. It names the field and shows you the crop of the actual paper it was read from. |
+| 2 | **Read.** Text-layer PDFs with the standard library, Tesseract or EasyOCR for photographs, plain text otherwise. A *scanned* PDF is refused by name — it is a photograph in a wrapper. Every field keeps its confidence, the line it came from, and (from a photograph) the rectangle on the page. | use a total it read below threshold. It names the field and shows you the crop of the actual paper it was read from. |
 | 3 | **Match.** Amount, date window, merchant string. Fuzzy on the name, exact on the cents. | auto-resolve a tie. A guess that looks like a match is worse than a gap that looks like a gap. |
 | 4 | **Crossfoot.** The four checks. | widen a tolerance far enough to hide a magnitude error. Rounding gets cents; nothing gets a percent. |
 | 5 | **Review.** Only failures and unchecked reach a human, ordered by money at risk. | let an assistant clear the queue. Approval is a keystroke in your window; there is no path to it from the model's side. |
@@ -41,9 +41,13 @@ all. It feeds them.
 
 ## Status
 
-All six steps exist. 495 tests, including a corpus of 22 receipts run both as
-text and as images through Tesseract. See *What it actually gets right* below
-for the numbers.
+All six steps exist. 563 tests, including a corpus of 22 receipts run both as
+text and as images through Tesseract, and 55 photographs of real receipts. See
+*What it actually gets right* below for the numbers, including the ones that
+are bad.
+
+**Start with `crossfoot audit`** — the statement alone, no receipts, nothing
+optional installed. It is the part that survived the measurement.
 
 ### If you would rather not use a terminal
 
@@ -75,6 +79,7 @@ own browser.
 ```
 pip install -e ".[dev]" && pytest
 
+crossfoot audit  statement.csv                        # the statement alone
 crossfoot check  --inbox ./inbox                      # read-only
 crossfoot export --inbox ./inbox --to actual --out ledger.csv
 
@@ -292,10 +297,15 @@ of that: the paper-finder draws one box around both, and two receipts' fields
 would be read as one. That needs a design decision rather than a patch, and it
 is not made yet.
 
-**So: should you point a camera at this today? No.** Feed it PDFs and emailed
-receipts, where the text is text and none of the above applies, and feed it
-your statement, which is a CSV that OCR cannot touch. The photograph path is
-measured, honest and not ready.
+**So: should you point a camera at this today? No.** Start with
+`crossfoot audit statement.csv`, which reads your bank export alone — no
+receipts, no OCR, nothing optional installed — and tells you what is wrong with
+it. Feed it PDF receipts too, where the text is text: `crossfoot` now reads a
+text-layer PDF with the standard library and refuses a scanned one by name,
+because a scanned PDF is a photograph in a wrapper and everything above applies
+to it unchanged. Measured on 24 real PDFs: 16 were scans and 6 were text.
+
+The photograph path is measured, honest and not ready.
 
 If you photograph a few of your own receipts and they come out wrong, that is
 still the most useful bug report this project can receive.

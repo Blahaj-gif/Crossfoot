@@ -13,7 +13,7 @@ should not be made to install a machine-learning stack to do it.
 """
 import os
 
-from crossfoot.read import ocr
+from crossfoot.read import ocr, pdf
 
 #: Read once at import so the answer cannot change mid-run and produce two
 #: different readings of the same document in one session.
@@ -60,6 +60,22 @@ def read(path: str) -> dict:
             raise UnreadableDocument(str(e)) from e
 
     suffix = os.path.splitext(path)[1].lower()
+
+    # A PDF, read with the standard library and nothing else. This used to fall
+    # through to "open it as text and admit it is noise" unless docling was
+    # installed, which it never was -- so the whole PDF path was a promise with
+    # no implementation behind it.
+    #
+    # Measured on 24 real PDFs: two thirds are scans, which no reader can help
+    # with, and the text-layer third gives up thousands of words to sixty lines
+    # of zlib and a regular expression. docling is unnecessary for the first
+    # kind and insufficient for the second.
+    if suffix == ".pdf":
+        try:
+            return pdf.read(path)
+        except OSError as e:
+            raise UnreadableDocument(f"{path}: {e}") from e
+
     if suffix in PLAIN_SUFFIXES or not HAVE_DOCLING:
         try:
             with open(path, encoding="utf-8", errors="replace") as fh:
@@ -67,10 +83,9 @@ def read(path: str) -> dict:
         except OSError as e:
             raise UnreadableDocument(f"{path}: {e}") from e
         if suffix not in PLAIN_SUFFIXES and not HAVE_DOCLING:
-            # Read as bytes-turned-text because nothing better is installed.
-            # Say so: a PDF read this way is mostly binary noise, and a total
-            # "found" in it would be an artefact.
-            return {"text": text, "reader": "plain text (docling not installed)",
+            # Some other binary format nothing here reads. Say so rather than
+            # letting a parser find amounts in the byte soup.
+            return {"text": text, "reader": "plain text (nothing better installed)",
                     "path": path, "degraded": True}
         return {"text": text, "reader": "plain text", "path": path,
                 "degraded": False}

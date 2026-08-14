@@ -315,12 +315,31 @@ TOTAL INCLUDES VAT OF    1.77
     assert int(parsed["tax"]) == 177
 
 
-def test_vat_inclusive_phrasing_in_other_languages_is_read_the_same_way():
-    """The phrasing is not an English idiom; the receipts it appears on are not
-    English either."""
+def test_a_line_that_states_the_tax_amount_is_the_tax():
+    """
+    The distinction is the word "of", and these three carry it — the last two
+    in a single word that means "of which".
+    """
+    assert R._label_on("TOTAL INCLUDES VAT OF : 1.77") == "tax"
     assert R._label_on("Incl. 7.6% MwSt 54.50 CHF: 3.85") == "tax"
-    assert R._label_on("Gesamt inkl. MwSt 3,85") == "tax"
-    assert R._label_on("Totaal incl. BTW 2,10") == "tax"
+    assert R._label_on("davon MwSt 19% 1,52") == "tax"
+
+
+def test_a_total_that_merely_notes_vat_is_inside_it_is_still_the_total():
+    """
+    The bug this rule shipped with, and the reason two tests written alongside
+    it asserted the wrong answer.
+
+    "TOTAL INCLUDES VAT OF 1.77" names a figure and says what it is. "Totaal
+    incl. BTW 2,10" names the *total* and notes in passing that tax is already
+    inside it. Reading the second as a tax loses the total on every European
+    receipt that prints it that way, which is a great many of them.
+    """
+    assert R._label_on("TOTAL (incl. VAT)      17.31") == "total"
+    assert R._label_on("Totaal incl. BTW        2,10") == "total"
+    assert R._label_on("Gesamt inkl. MwSt       3,85") == "total"
+    assert int(R.as_receipt(R.extract(
+        "SHOP\nItem 17.31\nTOTAL (incl. VAT) 17.31\n"))["total"]) == 1731
 
 
 def test_an_ordinary_total_line_is_still_a_total():
