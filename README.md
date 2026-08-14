@@ -8,10 +8,27 @@ Crossfoot's product is the check — and the third answer, *I could not tell*,
 which no other tool will give you.
 
 ```
-crossfoot audit statement.csv
+pip install -e .
+crossfoot audit examples/statement.csv
 ```
 
-No account, no bank connection, no receipts, nothing optional installed.
+No account, no bank connection, no receipts, nothing optional installed — and
+**a statement in the box**, so the first step is not "export your own bank
+data for a tool you found five minutes ago".
+
+```
+statement.csv: 63 rows, whole
+
+  What looks wrong — 974.07 at stake
+        842.19  PAID TWICE     two charges of 842.19 at this merchant, the same day
+         95.88  NEW RECURRING  audiobook club started charging 7.99 monthly on 2026-03-17
+         36.00  PRICE ROSE     streamline music went from 8.99 to 11.99 — 36.00 a year
+          0.00  PAID TWICE     …and a refund of the same amount five days later,
+                               so this one was already put right
+```
+
+Then point it at your own export. See [examples/](examples/) for what is
+planted in that file and why.
 
 > *Crossfooting* is the auditor's practice of verifying that a row's total and
 > its column's total agree: two independently derived numbers about the same

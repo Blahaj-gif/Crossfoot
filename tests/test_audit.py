@@ -372,3 +372,59 @@ def test_a_file_that_is_not_a_statement_is_refused_by_name(tmp_path, capsys):
     path.write_text("Name,Note\nAda,hello\n", encoding="utf-8")
     assert cli.main(["audit", str(path)]) == 2
     assert "Cannot read" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------
+# The statement shipped with the project
+# --------------------------------------------------------------------------
+
+EXAMPLE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "examples", "statement.csv")
+
+
+def test_the_shipped_example_still_shows_what_it_promises():
+    """
+    The first thing a stranger runs, so it is the first thing that can be
+    embarrassing. Pinned to the behaviours `examples/README.md` claims, because
+    a demo that quietly stops demonstrating is worse than no demo.
+    """
+    with open(EXAMPLE, encoding="utf-8") as handle:
+        found = A.audit(S.parse_csv(handle.read()))
+
+    assert found["completeness"]["state"] == A.WHOLE
+    assert found["suppressed"] is False
+
+    kinds = [f["kind"] for f in found["findings"]]
+    assert "paid_twice" in kinds
+    assert "price_rose" in kinds
+    assert "new_recurring" in kinds
+
+    # The refunded pair is shown, and is worth nothing, because the money came
+    # back. Counting it would overstate the headline figure on the very first
+    # page anybody sees.
+    refunded = [f for f in found["findings"]
+                if f["kind"] == "paid_twice" and int(f["at_risk"]) == 0]
+    assert refunded, "the refunded duplicate should be shown at zero at risk"
+    assert "already put right" in refunded[0]["why"]
+
+    # One subscription, not six, despite a reference that changes every month.
+    music = [r for r in found["recurring"] if "streamline" in r["merchant"]]
+    assert len(music) == 1 and music[0]["charges"] == 6
+
+
+def test_breaking_one_balance_in_the_example_silences_the_whole_report():
+    """
+    The claim `examples/README.md` makes, and the gate with teeth. A person who
+    tries this is shown the one behaviour that separates this from every other
+    statement scanner.
+    """
+    with open(EXAMPLE, encoding="utf-8") as handle:
+        rows = handle.read().splitlines()
+    columns = rows[8].split(",")
+    columns[-1] = f"{float(columns[-1]) + 100:.2f}"
+    rows[8] = ",".join(columns)
+
+    found = A.audit(S.parse_csv("\n".join(rows) + "\n"))
+    assert found["completeness"]["state"] == A.INCOMPLETE
+    assert found["suppressed"] is True
+    assert found["findings"] == []
