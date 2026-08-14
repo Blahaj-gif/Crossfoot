@@ -255,6 +255,28 @@ def export(argv=None) -> int:
     return 0
 
 
+#: Flags the window is always started with. Not preferences — each one closes
+#: something that was open.
+#:
+#: **`server.address=127.0.0.1`.** Streamlit's default is `None`, which binds
+#: to *every* interface, and it advertises the fact by printing a "Network URL"
+#: next to the local one. This window shows bank statements and receipts, and
+#: it has no login, so on any shared network — an office, a flat, a café — it
+#: was a page of somebody's financial documents that anyone on the same wifi
+#: could open by guessing a port. The README said "a page served by your own
+#: machine to your own browser" and that was not true.
+#:
+#: **`browser.gatherUsageStats=false`.** Streamlit's default is on, and it
+#: sends telemetry. It does not send documents, and it is still a network
+#: request from a project whose stated property is that it makes none. CI
+#: asserts that *Crossfoot* imports no network library, which was never a claim
+#: about what an optional dependency does on its own account.
+_WINDOW_FLAGS = [
+    "--server.address=127.0.0.1",
+    "--browser.gatherUsageStats=false",
+]
+
+
 def review(argv=None) -> int:
     """Hand off to Streamlit, which owns the only path to a decision."""
     app = os.path.join(os.path.dirname(os.path.abspath(__file__)), "review", "app.py")
@@ -265,7 +287,8 @@ def review(argv=None) -> int:
               "the checking layer stays installable on its own:\n"
               "    pip install 'crossfoot[ui]'", file=sys.stderr)
         return 1
-    return subprocess.call([sys.executable, "-m", "streamlit", "run", app, "--",
+    return subprocess.call([sys.executable, "-m", "streamlit", "run", app,
+                            *_WINDOW_FLAGS, "--",
                             *(argv if argv is not None else sys.argv[1:])])
 
 

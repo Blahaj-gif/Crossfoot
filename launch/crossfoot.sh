@@ -1,7 +1,12 @@
 #!/bin/bash
-# Double-click this (macOS). It sets Crossfoot up the first time and opens the
-# window every time after, so nobody has to learn a terminal to look at their
-# own receipts.
+# Linux. It sets Crossfoot up the first time and opens the window every time
+# after, so nobody has to learn a terminal to look at their own receipts.
+#
+# Honest about the double-click: macOS runs a `.command` from Finder, and this
+# is the `.command`'s twin for Linux, where whether a file manager will run a
+# script depends on the desktop. If double-clicking opens it in a text editor
+# instead, mark it executable and run it, or run `./launch/crossfoot.sh` from a
+# terminal. The alternative was claiming a behaviour that varies by desktop.
 #
 # Deliberately a readable script rather than a signed app bundle: this program
 # reads your bank statements, and a file you can open in TextEdit is a better

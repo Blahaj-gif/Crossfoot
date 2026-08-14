@@ -7,6 +7,13 @@ on:
   push:
   pull_request:
 
+# Read-only by default. Without this the workflow token takes whatever the
+# repository's default is, which on a public repo is a write-capable token
+# handed to every third-party action in the job. Nothing here needs to write
+# anything, so nothing here should be able to.
+permissions:
+  contents: read
+
 jobs:
   pytest:
     runs-on: ubuntu-latest
@@ -35,7 +42,11 @@ jobs:
       # rather than trusting the ignore file to have been complete.
       - name: Nothing a run produces may be tracked
         run: |
-          tracked=$(git ls-files | grep -E '\.jsonl$|^receipts/|^statements/|\.sqlite$|^\.env$' || true)
+          # Widened after the corpus work: photographs of receipts and
+          # downloaded bank exports live under tests/corpus/ during a
+          # measurement and are ignored, not tracked. An ignore file only
+          # protects what somebody did not `git add -f`.
+          tracked=$(git ls-files | grep -E '\.jsonl$|^receipts/|^statements/|\.sqlite$|^\.env$|^tests/corpus/photographs/|-inbox/|\.(jpg|jpeg|png|heic|webp|ofx|qfx)$' || true)
           if [ -n "$tracked" ]; then
             echo "these are personal financial records and are tracked:"; echo "$tracked"; exit 1
           fi

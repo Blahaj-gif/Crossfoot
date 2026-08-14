@@ -526,3 +526,59 @@ def test_an_awkward_but_honest_filename_still_works(tmp_path):
     for name in ("IMG_2043 (1).jpg", "download (3).csv", "état de compte.csv",
                  "receipt.2026-01-05.pdf"):
         assert I.dropped_file_path(str(tmp_path), name) is not None
+
+
+# --------------------------------------------------------------------------
+# The window is for one machine
+# --------------------------------------------------------------------------
+
+def test_the_window_is_bound_to_this_machine_only(monkeypatch):
+    """
+    Streamlit's default `server.address` is None, which binds to every
+    interface — it even prints a "Network URL" beside the local one. This
+    window shows bank statements and receipts and has no login, so on any
+    shared network it was a page of somebody's financial documents that anyone
+    on the same wifi could open by guessing a port.
+
+    The README's claim, "a page served by your own machine to your own
+    browser", is only true with this flag.
+    """
+    called = {}
+    monkeypatch.setattr(cli.subprocess, "call",
+                        lambda cmd, *a, **k: called.setdefault("cmd", cmd) and 0)
+    monkeypatch.setitem(sys.modules, "streamlit", pytest)   # any importable module
+    cli.review([])
+    assert "--server.address=127.0.0.1" in called["cmd"]
+
+
+def test_the_window_does_not_send_usage_statistics(monkeypatch):
+    """
+    Streamlit's default is on. It does not send documents, and it is still a
+    network request from a project whose stated property is that it makes none
+    — CI asserts that *Crossfoot* imports no network library, which was never a
+    claim about what an optional dependency does on its own account.
+    """
+    called = {}
+    monkeypatch.setattr(cli.subprocess, "call",
+                        lambda cmd, *a, **k: called.setdefault("cmd", cmd) and 0)
+    monkeypatch.setitem(sys.modules, "streamlit", pytest)
+    cli.review([])
+    assert "--browser.gatherUsageStats=false" in called["cmd"]
+
+
+def test_the_flags_reach_streamlit_and_not_the_app(monkeypatch):
+    """
+    Streamlit's own options go before the `--` separator; everything after it
+    is the app's argv. Putting them on the wrong side would pass
+    `--server.address` to Crossfoot, which does not know what it is, and leave
+    the server bound to every interface anyway.
+    """
+    called = {}
+    monkeypatch.setattr(cli.subprocess, "call",
+                        lambda cmd, *a, **k: called.setdefault("cmd", cmd) and 0)
+    monkeypatch.setitem(sys.modules, "streamlit", pytest)
+    cli.review(["--inbox", "somewhere"])
+    cmd = called["cmd"]
+    separator = cmd.index("--")
+    assert all(cmd.index(flag) < separator for flag in cli._WINDOW_FLAGS)
+    assert cmd[separator + 1:] == ["--inbox", "somewhere"]

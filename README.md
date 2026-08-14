@@ -59,7 +59,11 @@ optional installed. It is the part that survived the measurement.
 ### If you would rather not use a terminal
 
 Download this repository, then **double-click** `launch/crossfoot.bat`
-(Windows), `launch/crossfoot.command` (macOS) or `launch/crossfoot.sh` (Linux).
+(Windows) or `launch/crossfoot.command` (macOS). On Linux, run
+`./launch/crossfoot.sh` — whether a desktop will run a script from a
+double-click varies, and claiming otherwise would be claiming a behaviour that
+depends on which one you have.
+
 The first run sets itself up and takes a minute; every run after opens the
 window. You still need Python installed. The script says so, and points you at
 python.org if you do not.
@@ -78,8 +82,15 @@ crossfoot            opens it, and it does everything:
 crossfoot doctor     what this computer can read, and how to fix what it cannot
 ```
 
-Nothing is uploaded. The window is a page served by your own machine to your
-own browser.
+Nothing is uploaded, and the window is bound to `127.0.0.1` — your own
+machine, your own browser, and no other machine on the network.
+
+That is a flag, not a default. Streamlit's own default binds to *every*
+interface and prints a "Network URL" beside the local one, so for a while this
+window — bank statements, receipts, no login — was reachable by anyone on the
+same wifi who guessed the port. It is also started with
+`--browser.gatherUsageStats=false`, because Streamlit's telemetry is on by
+default.
 
 ### From the command line, if you prefer
 
@@ -161,6 +172,11 @@ importer reads. That is the property the project is for, not a limitation
 worked around: receipts and statements are the most sensitive documents most
 people own, and a tool that promises they never leave the machine should have
 no code capable of sending them. CI asserts the absence of the imports.
+
+To be exact about what that covers: it is a claim about *Crossfoot's* code, and
+it was never a claim about what an optional dependency does on its own account.
+Streamlit sends usage telemetry by default, so the window is started with it
+switched off — the check would not have caught that, and did not.
 
 ## Reading what you actually have
 
