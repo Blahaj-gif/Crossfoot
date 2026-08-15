@@ -8,9 +8,14 @@ Crossfoot's product is the check — and the third answer, *I could not tell*,
 which no other tool will give you.
 
 ```
-pip install -e .
+git clone https://github.com/Blahaj-gif/Crossfoot && cd Crossfoot
+pip install .
 crossfoot audit examples/statement.csv
 ```
+
+Python 3.10 or newer, and nothing else. Not on PyPI yet, so it is a clone —
+said here rather than left for you to discover after copying two lines that
+could not work on their own.
 
 No account, no bank connection, no receipts, nothing optional installed — and
 **a statement in the box**, so the first step is not "export your own bank
