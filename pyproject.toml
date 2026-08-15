@@ -4,22 +4,46 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "crossfoot"
-version = "0.0.1"
-description = "Reconciles receipts against bank statements, and says so when it cannot"
+version = "0.1.0"
+# Leads with the statement, because that is what survived being measured. The
+# old line led with receipts, which is the half that reads about one real
+# photograph in fifty-five.
+description = "Audits a bank statement for duplicate charges, price rises and new subscriptions — and says when it could not check"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-# Deliberately empty for now. The verdict layer is arithmetic and stdlib, and
-# it should stay installable by someone who only wants that. Docling, the OCR
-# stack and the dashboard belong in extras when they arrive.
+keywords = ["bank", "statement", "reconciliation", "audit", "duplicate-charges",
+            "subscriptions", "privacy", "self-hosted", "ofx", "csv"]
+classifiers = [
+    # No license classifier: PEP 639 supersedes it with the `license = "MIT"`
+    # expression above, and setuptools refuses a build that states both.
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Office/Business :: Financial :: Accounting",
+]
+
+# Deliberately empty, and the property worth protecting: the audit runs on the
+# standard library alone. Measured by blocking streamlit, pandas, numpy, PIL
+# and pytesseract at the import hook and running it — no third-party module
+# loads. The OCR stack and the window belong in extras.
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Blahaj-gif/Crossfoot"
+Source = "https://github.com/Blahaj-gif/Crossfoot"
+Issues = "https://github.com/Blahaj-gif/Crossfoot/issues"
+Changelog = "https://github.com/Blahaj-gif/Crossfoot/commits/main"
 
 [project.optional-dependencies]
 dev = ["pytest", "hypothesis", "pillow"]
-# Layout parsing. Optional because the checking layer is arithmetic and stdlib,
-# and someone who only wants to reconcile numbers they already have should not
-# have to install a machine-learning stack to do it.
-read = ["docling"]
+# Was `read = ["docling"]`, and it is gone. Measured on 24 real PDFs: 16 are
+# scans and 6 carry a text layer. docling is unnecessary for the second kind --
+# sixty lines of zlib and a regular expression read them -- and insufficient for
+# the first, where it would OCR the page and inherit the one-in-fifty-five
+# result from the photograph measurement. PDFs now need no extra at all.
 # Photographs. Tesseract is fast and accurate and needs a system binary;
 # easyocr needs none but is a much heavier install. Both run locally on
 # already-present data — there is deliberately no cloud backend, because an
