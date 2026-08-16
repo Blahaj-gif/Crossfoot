@@ -105,6 +105,12 @@ reconciles, so the no-silent-pass property still holds — but *"zero wrong
 figures recorded"*, which this README said when the corpus was 55, is no longer
 true and has been corrected here rather than quietly left.
 
+Across 112 real receipts and six different image pipelines — autocontrast,
+adaptive thresholding, sharpening, alternative page modes — **not one
+extraction has ever satisfied its own arithmetic.** Every attempt to improve
+this by preprocessing was measured, and every one made it worse or left it
+unchanged.
+
 That is a broader and worse result than the first 55, which is what widening
 the corpus was for. ATM receipts: 0 of 8. Bank teller slips: 0 of 8. Market
 receipts: 0 of 8. Yellowed thermal: 0 of 8. Logo letterheads: 0 of 8.

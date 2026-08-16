@@ -155,3 +155,46 @@ photographs. That found `cents("0.001")` returning **1.00** — read as European
 thousands grouping, because the check for correct grouping accepted a leading
 group of `0`. No locale writes one thousand as `0.001`, and a fuel receipt's
 per-unit price is exactly where it would have bitten.
+
+---
+
+## Trying to improve it, and failing on purpose
+
+Five preprocessing levers, each run over all 112 photographs. The metric is
+**internal consistency** — an extraction where the line items sum to the
+subtotal, or subtotal plus tax makes the total — because there is hand-keyed
+truth for only eleven of the 112, and three numbers misread in a way that still
+satisfies the arithmetic between them is very unlikely. A variant that produces
+more self-consistent readings is genuinely reading better, and it needs no truth.
+
+| variant | read | produced a total | **self-consistent** | total with no arithmetic |
+|---|---|---|---|---|
+| baseline | 6 | 3 | **0** | 9 |
+| autocontrast | 5 | 1 | **0** | 8 |
+| adaptive threshold | 3 | 1 | **0** | 7 |
+| adaptive, softer | 3 | 1 | **0** | 5 |
+| unsharp mask | 5 | 2 | **0** | 10 |
+| page mode 4 | 7 | 3 | **0** | 8 |
+
+**Nothing was shipped from this, because nothing helped.** Adaptive local
+thresholding is the textbook fix for the unevenly-lit photograph and it was the
+worst of the six, halving what was read. Sharpening and autocontrast both lost
+ground. Page mode 4 read one more receipt and produced no more totals.
+
+The column that matters is the middle one. **Across 112 real receipts and six
+different pipelines, not one extraction has ever satisfied its own
+arithmetic.** Everything this has produced from a photograph of paper is either
+refused, or a lone total with nothing to check it against.
+
+The metric was validated before it was believed: on the rendered corpus it
+scores 15 of 22 on a clean render and **0 of 22** on the full
+phone-photograph simulation. Real receipts behave exactly like the worst
+synthetic damage — which is the most compact statement of the limit in this
+file, and a better answer than any accuracy percentage.
+
+### What that rules out
+
+Not "try harder at preprocessing". The cheap image-processing levers are
+measured and exhausted. What is left would be a different engine or a local
+vision model, and the second of those breaks the property that makes refusal
+safe: a threshold's errors are bounded and measurable, a model's are not.
