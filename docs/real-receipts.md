@@ -254,3 +254,56 @@ limitation is what the model can recognise, not where the page is.
 
 That is a model-capability limit. It is not reachable by thresholds, label
 lists or image filters, all three of which were tried and measured.
+
+---
+
+## What a vision model does instead
+
+Tesseract's limit is a model-capability limit, so the obvious question is what
+a *better* model does. Qwen2-VL-2B, on CPU, on the ten receipts whose numbers
+were keyed by hand — the same ten Tesseract read one of.
+
+| | Tesseract | Qwen2-VL-2B |
+|---|---|---|
+| fields exactly right | ~1 | **10** |
+| fields read wrongly | few (it produced almost nothing) | **9** |
+| **fields not found** | almost all | **0** |
+
+The first row is why this is worth knowing: reading really is within reach of a
+2-billion-parameter model that runs on a laptop with no GPU, at about 40
+seconds a receipt. Tesseract could not read these at all.
+
+**The third row is why it is not a free win.** The model never abstains. Asked
+for a total it does not know, it produces one — 21.27 for a receipt reading
+19.50, 98.00 for one reading 49.00, 45.15 for one reading 37.37. Fluent,
+plausible, wrong. Tesseract's failure was silence; this failure is confident
+prose, which is the exact shape this project was built to refuse.
+
+### The one that matters most
+
+The Family Dollar receipt came back as subtotal 2.50, tax 0.13, total 2.63. The
+paper says 2.00, 0.18, 2.18. Every number is wrong —
+
+    2.50 + 0.13 = 2.63
+
+— and it **crossfoots perfectly**. A hallucinated set of figures that satisfies
+its own arithmetic defeats the receipt-internal checks completely, because
+those checks assume the numbers were read independently and a model generates
+them together.
+
+That is a silent pass, and it is caught by exactly one thing: the charge on the
+bank statement, which is a CSV no model ever touched. Against a real £2.18 the
+receipt fails.
+
+### So the architecture a vision model implies
+
+- Reading: a small local VLM, not Tesseract. Genuinely better, genuinely local,
+  about 40s and 4.4 GB.
+- **The receipt's own arithmetic stops being trustworthy evidence**, because a
+  generative model can produce a consistent wrong set. It remains useful for
+  *catching* errors and useless for *confirming* correctness.
+- The statement match stops being one check among four and becomes the only
+  load-bearing one.
+
+That is a coherent design, and it is not the design this project has. It also
+costs the property that the core installs with no dependencies at all.
