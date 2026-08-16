@@ -470,3 +470,57 @@ Desk research can rank three options. It cannot tell you whether anybody wants
 the winner. That is Stage 2, and until Stage 2 reports, the honest description
 of this project is: *a well-tested tool that solves a problem its author has,
 with reasonable but unconfirmed evidence that others have it too.*
+
+---
+
+## The decision, 2026-08-15
+
+**Not published to PyPI. The project is finished as a clone-and-run tool.**
+
+Stage 1 shipped and works. Stage 2 — the demand test — was never run, and the
+decision was taken without it, which is worth being explicit about because this
+document spent a great deal of words insisting that only the test could settle
+it.
+
+What changed is that the proxies stopped disagreeing. Four separate attempts to
+find demand — the GitHub search, the Actual Budget issue tracker, the Firefly
+III discussion, the commercial landscape — pointed the same way each time:
+3 votes for the nearest feature, zero requests ever for the core capability, an
+incumbent request closed as completed in 2023, and a job that comes round twice
+a year.
+
+Publishing would have been cheap, harmless and free. It would also have been
+this project breaking its own rule at the last step. *A check that could not run
+is never counted as a check that passed* — and the mirror of that is that a
+demand nobody could find is not a demand you assert by shipping.
+
+### What was built, and stands
+
+- `crossfoot audit` — a statement audit on the standard library alone, measured
+  against 33 real bank exports from nine institutions: 19 parse, **0** silent
+  mis-parses, **0** rows dropped.
+- The three-state verdict, with `unchecked` never counted as clean, enforced in
+  CI.
+- A refusal gate that suppresses every finding when the export is not whole.
+- 593 tests, 93% coverage outside the review window.
+- Six security defects found and fixed across two audits: a LAN-exposed page of
+  bank statements, telemetry, directory traversal, a decompression bomb, CSV
+  formula injection, and beancount directive injection.
+
+### What was learned, and transfers
+
+The measurements were worth more than the product. Three of them overturned a
+belief this project was built on:
+
+1. **A corpus written by the parser's own author measures agreement, not
+   accuracy.** 17 of 22 on receipts written here; 1 of 55 on real photographs.
+2. **A guard the tests cannot reach is a guard nobody has checked.** Twice.
+3. **Ask what address it binds to.** The review window was serving financial
+   documents to the whole local network, and the README said it was not.
+
+### If this is picked up again
+
+The unfinished thread worth pulling is not receipts. It is that the statement
+audit works, needs nothing installed, and had no distribution. An Actual Budget
+plugin — when their plugin system lands — reaches the one audience that already
+has the file this reads and already chose a tool with no bank connection.

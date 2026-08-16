@@ -16,7 +16,13 @@ crossfoot audit examples/statement.csv
 ```
 
 Python 3.10 or newer and **nothing else** — no account, no bank connection, no
-receipts, no optional packages. Not on PyPI yet, so it is a clone.
+receipts, no optional packages.
+
+> **Finished, and not published to PyPI.** This works, it is tested, and the
+> evidence says almost nobody wants it. That reasoning is at the end, under
+> *[Whether this should exist](#whether-this-should-exist)*. If you are the
+> exception — you have a bank export and you want to know what is wrong with
+> it — clone it and it will work.
 
 There is a statement in the box, because the first step should not be "export
 your own banking for a tool you found five minutes ago". Then point it at your
@@ -256,12 +262,39 @@ So the empty field may be empty because the part people want is elsewhere and
 already built, and five abandoned repositories are as consistent with "everyone
 discovers there is nothing here" as with "nobody finishes things".
 
-That is not settled by writing more of this. It is settled by
-[the demand test](https://github.com/Blahaj-gif/Crossfoot/blob/main/docs/demand-test.md), whose threshold was written down before
-any results arrived: 25 people running it on their own statements, and 5 saying
-the *verdict* changed something they did. If that fails, the right ending is to
-leave this as a small finished tool and go and find a problem somebody is
-already trying to pay for.
+That is not settled by writing more of this. It was going to be settled by
+[the demand test](https://github.com/Blahaj-gif/Crossfoot/blob/main/docs/demand-test.md),
+whose threshold was written down before any results arrived: 25 people running
+it on their own statements, and 5 saying the *verdict* changed something.
+
+**That test was never run, and the decision was taken without it.** Here is the
+reasoning, so anyone who disagrees can see exactly where.
+
+The project's own rule is that a check which could not run is never counted as
+a check that passed. Applied to itself, the honest reading of the evidence is
+not "unproven, so try" — it is that every proxy available points the same way:
+
+- Actual Budget's request for duplicate detection has **3 votes**, and their
+  receipt request was closed as completed in 2023.
+- **Nobody, anywhere, has asked for a tool that checks a receipt's own
+  arithmetic** — the one thing here that nothing else does.
+- Even for somebody who wants it, a statement audit is a **twice-a-year** job.
+  A tool used twice a year is a tool that is forgotten between uses.
+- The commercial statement-auditors that do exist are consumer web apps. The
+  overlap between "wants a subscription audit" and "will install a Python CLI"
+  is small, and the self-hosted crowd who *would* install it are the same
+  people who voted 3.
+
+Publishing to PyPI would have been cheap and harmless. It would also have been
+this project breaking its own rule at the last step: asserting a demand it had
+measured four separate times and never found. So it stays a clone-and-run tool,
+which is the right size for the number of people who want it.
+
+**What it is now:** a finished, small, well-tested program that does exactly
+what it says and refuses to say more. If that is useful to you, take it — the
+licence is MIT and nothing here needs anything from me. If you run it on your
+own statement and it finds something real, an issue saying so is the one piece
+of evidence that would change this conclusion.
 
 ## Licence
 
