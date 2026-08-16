@@ -198,3 +198,59 @@ Not "try harder at preprocessing". The cheap image-processing levers are
 measured and exhausted. What is left would be a different engine or a local
 vision model, and the second of those breaks the property that makes refusal
 safe: a threshold's errors are bounded and measurable, a model's are not.
+
+---
+
+## Why it fails, stage by stage
+
+"OCR is hard" is not a diagnosis. The path from a JPEG to a checked total stops
+in one of six places, and which one decides whether the fix is an engine, a
+threshold, a label list, or nothing.
+
+| where it stops | of 112 |
+|---|---|
+| 1 · the engine returned almost nothing (< 8 words) | **20** |
+| 2 · it returned words but doubted too many | **86** |
+| 3 · trusted, but no line carried a label | 1 |
+| 4 · a label was found with no amount beside it | 2 |
+| 5 · fields found, nothing to check them against | 3 |
+| 6 · fields found **and self-consistent** | **0** |
+
+**106 of 112 stop before anything can be extracted.** So the interesting
+question is whether the refusal gate is throwing away good readings. It is not:
+of the 86 refused as degraded, **60 had no label anywhere in the text** and 18
+would have lost the amount as well. Only **8** carried both a label and an
+amount and were refused anyway. Opening the gate completely would gain eight
+untrusted readings with no arithmetic behind them.
+
+Then the number that ends the argument:
+
+> **Only 8 of 112 real receipts produced even one parseable money amount.**
+
+Not "the label was missing" — the *digits* are not there either.
+
+### Not a spelling problem
+
+The obvious next idea is fuzzy label matching: if `SUBTOTAL` came back as
+`susToTAL`, match it anyway. Measured across the 75 receipts where no label was
+found, 20 contain a word within edit distance of a label — and every one is a
+false positive:
+
+    MOIS → moms        toate → totale      MERCHANTS → merchandise
+    gees → fees        Taal → totaal       ERIC → service
+
+Fuzzy matching would attach the word `ERIC` to a tax field, on receipts that
+have no amounts to attach it to. It would add wrong answers to a corpus that
+currently has almost none.
+
+### So the mechanism is
+
+Tesseract's LSTM was trained on scanned documents — books, forms, letters — at
+around 300 dpi with printer's ink. A till receipt is low-contrast thermal or
+dot-matrix print, in a small face, on paper that curls, photographed at an
+angle in whatever light the kitchen had. Finding the paper and enlarging the
+ink improved the framing and did not change the legibility, because the
+limitation is what the model can recognise, not where the page is.
+
+That is a model-capability limit. It is not reachable by thresholds, label
+lists or image filters, all three of which were tried and measured.
