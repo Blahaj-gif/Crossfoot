@@ -279,3 +279,56 @@ def test_the_reason_names_the_disagreement_rather_than_the_verdict():
     receipt = {"lines": [{"amount": "791.44"}], "subtotal": "797.44"}
     why = v.reconcile(receipt, {"amount": "842.19"})["why"]
     assert "791.44" in why and "797.44" in why
+
+
+# --------------------------------------------------------------------------
+# A receipt a model wrote is a different kind of evidence
+# --------------------------------------------------------------------------
+
+def test_a_generated_receipt_is_not_reconciled_by_its_own_arithmetic():
+    """
+    The measured case, and the reason this rule exists.
+
+    A Family Dollar receipt came back from a vision model as subtotal 2.50,
+    tax 0.13, total 2.63. The paper says 2.00, 0.18, 2.18 — every figure wrong
+    — and 2.50 + 0.13 = 2.63 exactly. It crossfoots.
+
+    The internal checks are worth something when an OCR engine reads each
+    number independently, because agreement is then unlikely unless both were
+    read right. A language model emits them together, each conditioned on the
+    last, and producing a set that adds up is the easiest thing it does.
+    """
+    receipt = {"subtotal": v.Cents(250), "tax": v.Cents(13),
+               "total": v.Cents(263), "generated": True}
+    result = v.reconcile(receipt, None)
+    assert v.check_subtotal_builds_the_total(receipt).ok is True
+    assert result["verdict"] == v.UNCHECKED
+    assert "a model writes" in result["why"]
+
+
+def test_the_same_receipt_read_by_an_engine_is_reconciled():
+    """The rule is about provenance, not about the numbers."""
+    receipt = {"subtotal": v.Cents(250), "tax": v.Cents(13), "total": v.Cents(263)}
+    assert v.reconcile(receipt, None)["verdict"] == v.RECONCILED
+
+
+def test_a_generated_receipt_the_statement_agrees_with_is_reconciled():
+    """
+    The bank statement is a CSV no model has ever touched, so it is the one
+    thing that can carry a generated reading.
+    """
+    receipt = {"subtotal": v.Cents(250), "tax": v.Cents(13),
+               "total": v.Cents(263), "generated": True}
+    result = v.reconcile(receipt, {"amount": v.Cents(-263), "date": "2026-01-05"})
+    assert result["verdict"] == v.RECONCILED
+
+
+def test_a_generated_receipt_that_contradicts_itself_still_fails():
+    """
+    A model that cannot even agree with itself has certainly gone wrong, so the
+    internal checks keep their power to *fail* a receipt while losing their
+    power to pass one.
+    """
+    receipt = {"subtotal": v.Cents(250), "tax": v.Cents(13),
+               "total": v.Cents(999), "generated": True}
+    assert v.reconcile(receipt, None)["verdict"] == v.DISCREPANT

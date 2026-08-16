@@ -204,3 +204,38 @@ def test_an_ordinary_receipt_is_nowhere_near_the_bound(tmp_path):
     path = tmp_path / "long.pdf"
     path.write_bytes(_pdf(_drawing(*(RECEIPT * 200))))
     assert int(R.as_receipt(R.extract(document.read(str(path))["text"]))["total"]) == 1731
+
+
+# --------------------------------------------------------------------------
+# Parsing what a vision model says, without four gigabytes of weights
+# --------------------------------------------------------------------------
+
+def test_a_models_reply_becomes_a_receipt_marked_as_generated():
+    from crossfoot.read import vision
+    got = vision.as_receipt('{"merchant": "SHOP", "subtotal": 2.50, '
+                            '"tax": 0.13, "total": 2.63, "tip": null}')
+    assert got["generated"] is True
+    assert int(got["subtotal"]) == 250 and int(got["total"]) == 263
+    assert "tip" not in got
+
+
+def test_prose_around_the_json_is_tolerated():
+    """Models preface things. The JSON is what matters."""
+    from crossfoot.read import vision
+    got = vision.as_receipt('Sure! Here is the receipt:\n{"total": 17.31}\nHope that helps')
+    assert int(got["total"]) == 1731
+
+
+def test_a_reply_that_is_not_json_yields_no_figures_rather_than_guesses():
+    from crossfoot.read import vision
+    got = vision.as_receipt("I think the total is about seventeen pounds")
+    assert got["generated"] is True
+    assert "total" not in got
+
+
+def test_a_value_that_is_not_a_number_is_dropped():
+    """A model asked for a number sometimes returns "approximately 17.31"."""
+    from crossfoot.read import vision
+    got = vision.as_receipt('{"total": "approximately 17.31", "tax": 1.11}')
+    assert "total" not in got
+    assert int(got["tax"]) == 111

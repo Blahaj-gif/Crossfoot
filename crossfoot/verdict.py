@@ -525,9 +525,30 @@ def reconcile(receipt=None, charge=None) -> dict:
     failed = [c for c in checks if c.ok is False]
     passed = [c for c in checks if c.ok is True]
 
+    # A receipt read by a *generative* model is a different kind of evidence,
+    # and the difference is not a matter of degree.
+    #
+    # Every check above except the last compares two numbers the receipt states
+    # about itself, and they are worth something because an OCR engine reads
+    # each one independently — so agreement between them is unlikely unless
+    # both were read correctly. A language model does not read them
+    # independently. It emits them together, each conditioned on the last, and
+    # producing a set that adds up is the easiest thing it does.
+    #
+    # Measured: a Family Dollar receipt came back as 2.50 + 0.13 = 2.63 against
+    # a paper reading 2.00 + 0.18 = 2.18. Every figure wrong; the arithmetic
+    # exact. Under the old rule that reconciled, on three numbers a model had
+    # invented in one breath.
+    #
+    # So for a generated receipt the internal checks can still FAIL — a model
+    # that contradicts itself has certainly gone wrong — but they cannot pass
+    # it. Only the bank statement can, because the statement is a CSV that no
+    # model has ever touched.
+    matched = next((c for c in checks
+                    if c.name == "receipt_matches_charge" and c.ok is True), None)
     if failed:
         state = DISCREPANT
-    elif passed:
+    elif passed and (matched or not receipt.get("generated")):
         state = RECONCILED
     else:
         state = UNCHECKED
@@ -537,11 +558,11 @@ def reconcile(receipt=None, charge=None) -> dict:
         "checks": checks,
         "failed": failed,
         "at_risk": cents((charge or {}).get("amount")),
-        "why": _why(state, failed, checks),
+        "why": _why(state, failed, checks, receipt.get("generated")),
     }
 
 
-def _why(state, failed, checks) -> str:
+def _why(state, failed, checks, generated=False) -> str:
     """
     One line a person reads in the queue, before any number.
 
@@ -551,6 +572,10 @@ def _why(state, failed, checks) -> str:
     baffling thing to read about a charge that has no receipt. The absence of
     the document outranks anything missing inside it.
     """
+    if state == UNCHECKED and generated and any(c.ok for c in checks):
+        return ("a model read this receipt and its figures agree with each "
+                "other, which is not evidence they are right — a model writes "
+                "them together. Nothing has matched it to a charge.")
     if state == DISCREPANT:
         return failed[0].detail
     if state == RECONCILED:

@@ -51,6 +51,12 @@ dev = ["pytest", "hypothesis", "pillow"]
 # this machine" into a lie.
 ocr = ["pytesseract", "pillow"]
 ocr-heavy = ["easyocr"]
+# A small local vision model, which is the only thing measured to read a
+# photographed till receipt at all -- 10 fields right on the ten hand-keyed
+# receipts Tesseract read one of. About 4 GB, runs on a CPU, and nothing
+# leaves the machine. Its readings are marked `generated` and cannot be
+# reconciled on their own arithmetic; see crossfoot/read/vision.py.
+vision = ["torch", "torchvision", "transformers>=4.45", "accelerate", "pillow"]
 ui = ["streamlit>=1.49"]
 
 [project.scripts]
