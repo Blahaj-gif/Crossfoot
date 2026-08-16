@@ -347,3 +347,51 @@ def test_an_ordinary_total_line_is_still_a_total():
     assert R._label_on("TOTAL                   19.50") == "total"
     assert R._label_on("TOTAL DUE               19.50") == "total"
     assert R._label_on("TAX                      1.77") == "tax"
+
+
+# --------------------------------------------------------------------------
+# What was handed over is not what was owed
+# --------------------------------------------------------------------------
+
+SHOES = """SHIEKH SHOES LLC
+2039 Westminster mall
+
+33-869 A FRC1 MID        79.97
+Tax                       6.20
+Total                  $ 86.17
+
+Amount Paid             100.00
+Change                 $ 13.83
+"""
+
+
+def test_cash_handed_over_is_not_the_total():
+    """
+    Found on a photograph of a real receipt from a Westminster mall.
+
+    "AMOUNT PAID" was in the total list — on a card slip it genuinely is the
+    total — and because a later total was allowed to beat an earlier one, this
+    receipt was read as a total of **180.08** against a paper total of 86.17.
+    The giveaway is the line underneath: a receipt that gives change has a
+    total smaller than the money handed over, by definition.
+    """
+    parsed = R.as_receipt(R.extract(SHOES))
+    assert int(parsed["total"]) == 8617
+    assert int(parsed["tax"]) == 620
+
+
+def test_a_card_slip_with_no_total_may_use_what_was_paid():
+    """
+    The other half. A card receipt often states only what was paid, and no
+    change, so there the tender *is* the total — inferred rather than labelled,
+    so it stays below the trust threshold and is shown as evidence.
+    """
+    extracted = R.extract("CORNER SHOP\nItem 12.00\nAmount Paid 12.00\n")
+    assert int(extracted["fields"]["total"].value) == 1200
+    assert extracted["fields"]["total"].confidence == R.INFERRED
+
+
+def test_a_receipt_that_gives_change_never_reads_the_tender_as_a_total():
+    """Even with no total line at all: change proves the tender is not it."""
+    parsed = R.as_receipt(R.extract("SHOP\nItem 12.00\nCash 20.00\nChange 8.00\n"))
+    assert parsed.get("total") != 2000

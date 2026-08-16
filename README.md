@@ -93,10 +93,21 @@ right up until the year you needed it to have been right.
 
 Crossfoot began as a receipt checker. Then the receipts were measured.
 
-**On 55 photographs of real receipts, 52 were refused and one produced a
-total — and that one was a screenshot rather than paper.** Zero wrong figures
-were recorded, which is the safety property working exactly as designed and is
-also not a useful result: a tool that answers once in 55 cannot be wrong often.
+**On 112 photographs of real receipts — ATM slips, bank teller receipts, mall
+and market receipts, yellowed thermal, logo letterheads, modern and historic —
+three produced a total. Two of those three are digital screenshots.**
+
+One paper receipt out of 112 produced figures, and **they are wrong**: a
+Westminster mall receipt reading Tax 6.28 against a printed 6.20, and a total
+of 46.17 against a printed 86.17, because the engine read an 8 as a 4. Both are
+loudly wrong — against the real charge of 86.17 that receipt fails rather than
+reconciles, so the no-silent-pass property still holds — but *"zero wrong
+figures recorded"*, which this README said when the corpus was 55, is no longer
+true and has been corrected here rather than quietly left.
+
+That is a broader and worse result than the first 55, which is what widening
+the corpus was for. ATM receipts: 0 of 8. Bank teller slips: 0 of 8. Market
+receipts: 0 of 8. Yellowed thermal: 0 of 8. Logo letterheads: 0 of 8.
 
 So **do not point a camera at this today.** Expensify, Dext and QuickBooks read
 a photographed receipt far better, because they have cloud OCR and people

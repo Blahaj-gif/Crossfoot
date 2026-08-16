@@ -277,3 +277,47 @@ def test_the_statement_reports_its_currency_when_it_states_one():
 def test_a_statement_naming_nothing_claims_nothing():
     text = "Date,Description,Amount\n2026-08-06,CAFE,-17.31\n"
     assert S.parse_csv(text)["currency"] is None
+
+
+# --------------------------------------------------------------------------
+# Amounts that look absurd, and are real somewhere
+# --------------------------------------------------------------------------
+#
+# No photograph of a hyperinflation receipt could be found under a free
+# licence, so this tests the arithmetic rather than pretending to test the
+# reading. A Zimbabwean receipt from 2008 really did carry fourteen digits, and
+# a parser that quietly loses one of them is worse than one that refuses.
+
+def test_an_amount_with_more_digits_than_anyone_expects_is_exact():
+    """
+    Python integers do not overflow, and cents are integers here for exactly
+    this reason — a float would have stopped being exact around 2^53, which is
+    about ninety trillion cents, which is a real 2008 Zimbabwean grocery bill.
+    """
+    assert int(V.cents("100,000,000,000,000.00")) == 10_000_000_000_000_000
+    assert int(V.cents("1,234,567,890.12")) == 123_456_789_012
+
+
+def test_a_receipt_of_absurd_amounts_still_crossfoots_exactly():
+    """The check is arithmetic, so the magnitude should not matter at all."""
+    receipt = {"subtotal": V.cents("999,999,999,999.99"),
+               "tax": V.cents("0.01"),
+               "total": V.cents("1,000,000,000,000.00")}
+    assert V.check_subtotal_builds_the_total(receipt).ok is True
+
+
+def test_one_cent_out_at_a_trillion_is_still_one_cent_out():
+    """
+    The failure a percentage tolerance would hide. A rounding allowance that
+    scaled with the amount would swallow an entire salary at this magnitude.
+    """
+    receipt = {"subtotal": V.cents("999,999,999,999.99"),
+               "tax": V.cents("0.01"),
+               "total": V.cents("1,000,000,000,000.01")}
+    assert V.check_subtotal_builds_the_total(receipt).ok is False
+
+
+def test_a_tiny_amount_is_not_rounded_into_nothing():
+    """Sub-unit pricing is real: fuel, electricity, and per-item market stalls."""
+    assert int(V.cents("0.01")) == 1
+    assert V.cents("0.001") is None          # three decimals is not money here

@@ -121,6 +121,12 @@ def _groups_correctly(whole: str, separator: str) -> bool:
     groups = whole.split(separator)
     if not all(g.isdigit() for g in groups):
         return False
+    # A leading group of "0" is not a group. No locale writes one thousand as
+    # "0.001" — and without this, that string was read as grouped digits and
+    # came back as 1.00. Found while testing absurd magnitudes; it matters at
+    # the small end, where a fuel receipt's per-unit "0.001" became a pound.
+    if len(groups) > 1 and groups[0].lstrip("0") == "":
+        return False
     return 1 <= len(groups[0]) <= 3 and all(len(g) == 3 for g in groups[1:])
 
 

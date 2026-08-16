@@ -100,3 +100,58 @@ which is not how a person's camera roll is chosen. A photograph taken
 deliberately, in good light, of a receipt the photographer intends to check, is
 a different and probably easier population than a photograph uploaded to
 Commons to illustrate an article.
+
+---
+
+## Widened to 112, by kind
+
+The first 55 were whatever Commons had filed under "receipt". These were
+searched for by *kind*, because the failure modes differ: an ATM slip is
+dot-matrix on a narrow roll, a mall receipt is a logo and a barcode, a yellowed
+thermal receipt is low-contrast ink on low-contrast paper.
+
+| kind | n | read | produced a total |
+|---|---|---|---|
+| ATM | 8 | 0 | 0 |
+| bank teller | 8 | 0 | 0 |
+| market | 8 | 0 | 0 |
+| yellowed thermal | 8 | 0 | 0 |
+| logo letterhead | 8 | 0 | 0 |
+| historic | 8 | 0 | 0 |
+| fuel | 5 | 0 | 0 |
+| mall / retail | 8 | 1 | 1 |
+| modern | 8 | 2 | 1 |
+| electronic | 3 | 2 | 1 |
+| **all sixteen kinds** | **112** | **6** | **3** |
+
+**Two of the three totals came off screenshots.** One came off paper, and both
+of its figures are wrong — Tax 6.28 against a printed 6.20, total 46.17 against
+a printed 86.17. The engine read an 8 as a 4.
+
+That corrects a claim this project had been making. At 55 photographs, "zero
+wrong figures were recorded" was true. At 112 it is not, and the README now
+says so. The narrower property — *wrong **and** reconciling* — still holds:
+46.17 against a real charge of 86.17 fails loudly.
+
+### The bug it found
+
+The same receipt was, before this, read as a total of **180.08**.
+
+`AMOUNT PAID` was in the list of words meaning "total" — on a card slip it
+genuinely is one — and a later total was allowed to beat an earlier one. So on
+a cash receipt reading *Total $86.17 / Amount Paid 100.00 / Change $13.83*, the
+money handed over won.
+
+A tender now stands in for the total only when the receipt states no total of
+its own **and** gives no change. That is a fact on the page rather than a
+preference: a receipt that gives change has a total smaller than the money
+handed over, by definition.
+
+### And one at the other end of the scale
+
+No hyperinflation receipt exists on Commons under a free licence, so absurd
+magnitudes are tested against the parser directly rather than pretended at with
+photographs. That found `cents("0.001")` returning **1.00** — read as European
+thousands grouping, because the check for correct grouping accepted a leading
+group of `0`. No locale writes one thousand as `0.001`, and a fuel receipt's
+per-unit price is exactly where it would have bitten.

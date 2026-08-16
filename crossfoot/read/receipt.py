@@ -72,7 +72,7 @@ _LABELS = {
     # "totaal" is not "total" and the match is on word boundaries. That is a
     # whole country of receipts missed on a spelling.
     "total": ("total", "amount due", "balance due", "grand total", "total due",
-              "amount paid", "total sale", "to pay", "total ttc", "summe",
+              "total sale", "to pay", "total ttc", "summe",
               "gesamt", "totale", "importe total",
               # Dutch and Flemish. "te betalen" is what Lidl and Aldi print.
               "totaal", "te betalen", "totaalbedrag",
@@ -226,6 +226,33 @@ _INCLUSIVE_TAX = re.compile(
     r"|\b(vat|tax|gst|hst|tva|mwst|ust|btw|iva|moms|alv|qst)\b\s*(?:of\b|:)")
 
 
+#: What was handed over, which is not what was owed.
+#:
+#: "AMOUNT PAID" was in the total list, and on a card slip it genuinely is the
+#: total. On a *cash* receipt it is the tender, and the giveaway is the line
+#: underneath it that says CHANGE. Found on a photographed Shiekh Shoes receipt
+#: from a Westminster mall: the paper says Total $86.17, Amount Paid 100.00,
+#: Change $13.83 — and because a later total was allowed to beat an earlier
+#: one, the receipt was read as a total of 180.08.
+#:
+#: So a tender is only the total when the receipt states no total of its own,
+#: and never when it also states change. That is a fact on the page rather
+#: than a preference: a receipt that gives change has a total smaller than the
+#: money handed over, by definition.
+_TENDER = ("amount paid", "amount tendered", "tendered", "cash tendered",
+           "paid", "cash", "bar", "contant", "efectivo")
+
+_CHANGE = ("change", "change due", "rueckgeld", "ruckgeld", "wisselgeld",
+           "cambio", "rendu", "resto")
+
+
+def _labelled_as(line: str, words) -> bool:
+    """Whether this line carries one of these words as a label."""
+    lowered = re.sub(r"[^a-z ]", " ", (line or "").lower())
+    return any(re.search(rf"(?<![a-z]){re.escape(word)}(?![a-z])", lowered)
+               for word in words)
+
+
 def _label_on(line: str):
     """
     Which field this line is labelled as, or None.
@@ -320,6 +347,23 @@ def extract(text: str, ocr_lines=None, degraded: bool = False) -> dict:
             box=boxes.get(number))
         if label == "subtotal":
             subtotal_at = number
+
+    # A tender line — "AMOUNT PAID", "CASH" — stands in for the total only when
+    # the receipt states no total of its own *and* gives no change. If change
+    # was given, the money handed over is larger than the amount owed by
+    # definition, and reading it as the total overstates the charge.
+    if "total" not in fields:
+        gives_change = any(_labelled_as(line, _CHANGE) for line in lines)
+        if not gives_change:
+            for number, line in enumerate(lines):
+                if not _labelled_as(line, _TENDER):
+                    continue
+                amounts = _amounts_in(line, mark)
+                if amounts:
+                    fields["total"] = Field(
+                        amounts[-1], GUESSED if degraded else INFERRED, number,
+                        line, "no total stated; read from what was handed over",
+                        box=boxes.get(number))
 
     if "total" not in fields:
         fields["total"] = _infer_total(lines, boxes, mark)
