@@ -23,6 +23,43 @@ TAGS = (R.RECONCILED, R.ACCEPTED, R.DISCREPANT, R.AMBIGUOUS, R.UNCHECKED,
         R.DUPLICATE)
 
 
+#: Characters that make a spreadsheet treat a cell as a formula rather than as
+#: text. `=cmd|' /C calc'!A1` in a payee column is a working remote-execution
+#: payload the moment somebody opens the export in Excel.
+#:
+#: The threat is not theoretical for *this* program specifically: a payment
+#: descriptor is set by the merchant, the whole purpose of these files is to be
+#: opened in something else, and "here is your statement" is a plausible way to
+#: hand somebody a crafted CSV in the first place.
+_FORMULA_LEAD = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _defused(value):
+    """
+    A cell that cannot become a formula, and a payee that cannot become a row.
+
+    Two separate problems with one answer. A leading `=` is prefixed with an
+    apostrophe, which is the documented mitigation and which spreadsheets strip
+    on display. A newline is removed, because a description carrying one splits
+    into a second CSV record — or, in a beancount ledger, into a second
+    *transaction*.
+
+    This alters the data, which this project otherwise refuses to do. The
+    exception is deliberate: the alternative is emitting a file whose contents
+    execute, and a payee legitimately beginning with `=` does not exist. A
+    negative *amount* is untouched, because amounts are written as numbers by
+    the caller and never pass through here as text.
+    """
+    if not isinstance(value, str):
+        return value
+    flattened = value.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+    flattened = "".join(c for c in flattened if c == "\t" or ord(c) >= 32)
+    flattened = flattened.replace("\t", " ").strip()
+    if flattened.startswith(_FORMULA_LEAD):
+        return "'" + flattened
+    return flattened
+
+
 def _csv(fieldnames, records) -> str:
     buffer = io.StringIO()
     # Explicit \n: the default writes \r\n, and a CSV that arrives with mixed
@@ -30,7 +67,7 @@ def _csv(fieldnames, records) -> str:
     writer = csv.DictWriter(buffer, fieldnames=fieldnames, lineterminator="\n")
     writer.writeheader()
     for record in records:
-        writer.writerow(record)
+        writer.writerow({key: _defused(value) for key, value in record.items()})
     return buffer.getvalue()
 
 
@@ -120,13 +157,16 @@ def beancount(rows, account: str = "Assets:Bank:Checking",
         if not row["date"]:
             continue                    # a dated ledger cannot hold an undated entry
         flag = "*" if row["verdict"] in (R.RECONCILED, R.ACCEPTED) else "!"
-        payee = row["description"].replace('"', "'")
+        # Flattened before quoting. A description containing a newline used to
+        # split the ledger open mid-transaction: the payee ran on to a second
+        # line and everything after it was parsed as further directives.
+        payee = _defused(row["description"]).replace('"', "'")
         out.append(f'{row["date"]} {flag} "{payee}"')
-        out.append(f'  crossfoot-verdict: "{row["verdict"]}"')
+        out.append(f'  crossfoot-verdict: "{_defused(row["verdict"])}"')
         if row["why"]:
-            out.append(f'  crossfoot-why: "{row["why"].replace(chr(34), chr(39))}"')
+            out.append(f'  crossfoot-why: "{_defused(row["why"]).replace(chr(34), chr(39))}"')
         if row["receipt"]:
-            out.append(f'  crossfoot-receipt: "{row["receipt"]}"')
+            out.append(f'  crossfoot-receipt: "{_defused(row["receipt"]).replace(chr(34), chr(39))}"')
         out.append(f"  {account}  {row['amount']} USD")
         out.append(f"  {expenses}")
         out.append("")

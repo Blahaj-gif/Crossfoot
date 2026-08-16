@@ -334,3 +334,65 @@ def test_the_cli_reads_the_log_and_still_cannot_write_one():
 
     assert any("ledger" in name for name in imported)
     assert not any("decisions" in name for name in imported)
+
+
+# --------------------------------------------------------------------------
+# An export is a file that something else executes
+# --------------------------------------------------------------------------
+
+FORMULA = '=cmd|\' /C calc\'!A1'
+
+
+def _row(description, **extra):
+    row = {"date": "2026-01-05", "description": description, "amount": -420,
+           "verdict": "crossfoot:unchecked", "why": "", "receipt": "",
+           "checks": ""}
+    row.update(extra)
+    return row
+
+
+def test_a_payee_cannot_become_a_formula_in_a_spreadsheet():
+    """
+    `=cmd|' /C calc'!A1` in a payee column is a working remote-execution
+    payload the moment somebody opens the export in Excel, and the entire
+    purpose of these files is to be opened in something else.
+
+    Not theoretical for this program: a payment descriptor is set by the
+    merchant, and "here is your statement" is a plausible way to hand somebody
+    a crafted CSV in the first place.
+    """
+    for writer in (T.generic, T.actual, T.firefly):
+        out = writer([_row(FORMULA)])
+        cells = [f for line in out.splitlines()[1:] for f in line.split(",")]
+        assert not any(c.lstrip('"').startswith(("=", "+", "@", "\t", "\r"))
+                       for c in cells), f"{writer.__name__} emitted a live formula"
+        assert "cmd|" in out, f"{writer.__name__} lost the value instead of defusing it"
+
+
+def test_a_newline_in_a_payee_cannot_open_a_second_row():
+    """A description carrying a newline splits into a second CSV record."""
+    out = T.generic([_row("SHOP\n2026-01-06,INJECTED,-9999.00")])
+    assert len(out.splitlines()) == 2          # header plus exactly one row
+
+
+def test_a_newline_in_a_payee_cannot_open_a_second_transaction():
+    """
+    The same fault in a ledger is worse: everything after the newline was
+    parsed as further beancount directives, so a crafted descriptor could write
+    entries nobody made.
+    """
+    out = T.beancount([_row('SHOP\n2026-01-06 * "INJECTED"\n  Assets:Bank  -9999.00 USD')])
+    # The text is kept — it is what the bank said the merchant was called — but
+    # it can no longer *begin a line*, which is the whole of what made it a
+    # directive rather than a name.
+    assert sum(1 for line in out.splitlines() if line.startswith("2026-")) == 1
+    assert "-9999.00 USD" not in [line.strip() for line in out.splitlines()]
+    assert out.splitlines()[0].count('"') == 2
+
+
+def test_an_ordinary_payee_is_left_exactly_alone():
+    """The guard must not rewrite the names on everybody's real statement."""
+    for name in ("SQ *BLUE BOTTLE 0042", "Café Ubik", "M&S SIMPLY FOOD",
+                 "AMZN Mktp UK*Z12AB", "7-ELEVEN 4471"):
+        out = T.generic([_row(name)])
+        assert name in out, name
