@@ -115,6 +115,19 @@ That is a broader and worse result than the first 55, which is what widening
 the corpus was for. ATM receipts: 0 of 8. Bank teller slips: 0 of 8. Market
 receipts: 0 of 8. Yellowed thermal: 0 of 8. Logo letterheads: 0 of 8.
 
+**That number measured two engines, not the problem.** Tesseract and EasyOCR
+are what produced it. Re-running the same 112 photographs through **RapidOCR** —
+never tried, CPU-only, still no network — reads text off 100 of them and three
+or more money-shaped amounts off 31, including 12 of the 15 supermarket and
+restaurant receipts that have line items to crossfoot at all. Six preprocessing
+pipelines failing was the signature of a model-side ceiling, and it was.
+
+That is not a reconciliation rate and must not be read as one: reading amounts
+is not identifying which are line items, and every figure still has to be
+exactly right. But *"photographed receipts are out of reach"* was a conclusion
+about two engines, and it has been corrected —
+[docs/ocr-retest.md](https://github.com/Blahaj-gif/Crossfoot/blob/main/docs/ocr-retest.md).
+
 So **do not point a camera at this today.** Expensify, Dext and QuickBooks read
 a photographed receipt far better, because they have cloud OCR and people
 checking the output. If your problem is paper into a computer, use one of those.
@@ -222,6 +235,7 @@ whose formats this project chose:
 | | |
 |---|---|
 | parsed | **19 of 33** |
+| of the 14 refused, ones that were a coverage gap | **0** |
 | a parsed field that cannot be traced back to its raw row | **0** |
 | rows silently dropped | **0** |
 | refusals that turned out to be wrong | **0** |
@@ -262,56 +276,14 @@ total, and the old approval no longer applies to it.
 
 ## Whether this should exist
 
-Searching GitHub for a tool that reconciles receipts against a bank statement
-returns five repositories. All five were created between 30 June and 8 August
-2026 and abandoned within days — 2, 4 and 6 commits. The first reading was that
-finishing is therefore the moat.
+The demand evidence was read, the demand test was written down, and the test
+was never run — the decision was taken without it. That reasoning is set out in
+full, including where it is weakest, in
+[docs/direction.md](https://github.com/Blahaj-gif/Crossfoot/blob/main/docs/direction.md).
 
-Looking harder made that weaker. Actual Budget's most-reacted feature request is
-[attaching receipts to transactions](https://github.com/actualbudget/actual/issues/530),
-with 195 reactions, **closed as completed in 2023**. The professional version of
-the problem is real, expensive, and served by Dext, Expensify, Ramp and BILL.
-That same community's request for duplicate detection has **3 votes**. And
-*nobody, anywhere, has filed an issue asking for a tool that checks a receipt's
-own arithmetic.*
-
-So the empty field may be empty because the part people want is elsewhere and
-already built, and five abandoned repositories are as consistent with "everyone
-discovers there is nothing here" as with "nobody finishes things".
-
-That is not settled by writing more of this. It was going to be settled by
-[the demand test](https://github.com/Blahaj-gif/Crossfoot/blob/main/docs/demand-test.md),
-whose threshold was written down before any results arrived: 25 people running
-it on their own statements, and 5 saying the *verdict* changed something.
-
-**That test was never run, and the decision was taken without it.** Here is the
-reasoning, so anyone who disagrees can see exactly where.
-
-The project's own rule is that a check which could not run is never counted as
-a check that passed. Applied to itself, the honest reading of the evidence is
-not "unproven, so try" — it is that every proxy available points the same way:
-
-- Actual Budget's request for duplicate detection has **3 votes**, and their
-  receipt request was closed as completed in 2023.
-- **Nobody, anywhere, has asked for a tool that checks a receipt's own
-  arithmetic** — the one thing here that nothing else does.
-- Even for somebody who wants it, a statement audit is a **twice-a-year** job.
-  A tool used twice a year is a tool that is forgotten between uses.
-- The commercial statement-auditors that do exist are consumer web apps. The
-  overlap between "wants a subscription audit" and "will install a Python CLI"
-  is small, and the self-hosted crowd who *would* install it are the same
-  people who voted 3.
-
-Publishing to PyPI would have been cheap and harmless. It would also have been
-this project breaking its own rule at the last step: asserting a demand it had
-measured four separate times and never found. So it stays a clone-and-run tool,
-which is the right size for the number of people who want it.
-
-**What it is now:** a finished, small, well-tested program that does exactly
-what it says and refuses to say more. If that is useful to you, take it — the
-licence is MIT and nothing here needs anything from me. If you run it on your
-own statement and it finds something real, an issue saying so is the one piece
-of evidence that would change this conclusion.
+The short version: the statement audit is a twice-a-year job, and a tool used
+twice a year is forgotten between uses. What is *not* twice a year is a monthly
+ledger, which is why the exporters above are the part of this worth using.
 
 ## Licence
 
