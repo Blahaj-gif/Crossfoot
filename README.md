@@ -89,6 +89,31 @@ Every incumbent collapses "verified correct" and "we could not tell" into one
 silent success. That is how a 90%-accurate parser feels like a 100%-accurate one
 right up until the year you needed it to have been right.
 
+## Into the tool you already use
+
+Crossfoot is not a budgeting app and has no intention of becoming one. It hands
+the verdict to whatever you already run, attached to the transaction.
+
+| `--to` | What you get |
+|---|---|
+| `actual` | **Actual Budget**'s importer. The verdict arrives as `#crossfoot-unchecked` in the note, because Actual filters on hashtags and a verdict written as prose is one nobody can filter on. |
+| `firefly` | **Firefly III**'s importer, tags as a real column, plus a `.json` holding the column mapping so it is not twenty dropdowns every month. |
+| `beancount` | Unreconciled entries carry beancount's own `!` flag, so `bean-check` surfaces them without anyone remembering a tag. |
+| `generic` | A plain CSV with every check that ran. |
+
+```
+crossfoot export --inbox ./inbox --to actual --out ledger.csv
+```
+
+Five verdicts leave, not three: `crossfoot:accepted-by-you` is its own state,
+because a person looked at a discrepancy and made a call, and exporting that as
+either "reconciled" or "unchecked" loses the only fact that matters about it.
+
+**This is the part worth using.** A statement audit on its own is a twice-a-year
+job, and a tool used twice a year is forgotten between uses. A ledger is not: if
+you already run beancount or Actual Budget monthly, this is a reconciliation
+step inside a routine you have, rather than one more thing to remember.
+
 ## Receipts, honestly
 
 Crossfoot began as a receipt checker. Then the receipts were measured.
@@ -150,26 +175,6 @@ arithmetic.
 
 Full numbers, including the bad ones:
 [docs/real-receipts.md](https://github.com/Blahaj-gif/Crossfoot/blob/main/docs/real-receipts.md).
-
-## Into the tool you already use
-
-Crossfoot is not a budgeting app and has no intention of becoming one. It hands
-the verdict to whatever you already run, attached to the transaction.
-
-| `--to` | What you get |
-|---|---|
-| `actual` | **Actual Budget**'s importer. The verdict arrives as `#crossfoot-unchecked` in the note, because Actual filters on hashtags and a verdict written as prose is one nobody can filter on. |
-| `firefly` | **Firefly III**'s importer, tags as a real column, plus a `.json` holding the column mapping so it is not twenty dropdowns every month. |
-| `beancount` | Unreconciled entries carry beancount's own `!` flag, so `bean-check` surfaces them without anyone remembering a tag. |
-| `generic` | A plain CSV with every check that ran. |
-
-```
-crossfoot export --inbox ./inbox --to actual --out ledger.csv
-```
-
-Five verdicts leave, not three: `crossfoot:accepted-by-you` is its own state,
-because a person looked at a discrepancy and made a call, and exporting that as
-either "reconciled" or "unchecked" loses the only fact that matters about it.
 
 ## Nothing here phones anything
 
