@@ -122,10 +122,20 @@ or more money-shaped amounts off 31, including 12 of the 15 supermarket and
 restaurant receipts that have line items to crossfoot at all. Six preprocessing
 pipelines failing was the signature of a model-side ceiling, and it was.
 
-That is not a reconciliation rate and must not be read as one: reading amounts
-is not identifying which are line items, and every figure still has to be
-exactly right. But *"photographed receipts are out of reach"* was a conclusion
-about two engines, and it has been corrected —
+Asked the product's own question — does some subset of the amounts sum to
+another amount — **12 receipts resolve exactly** with a coincidence rate under
+0.3%, and 3 more sit within a single digit. Six further exact matches were
+thrown out because on a busy page a subset search finds one by luck.
+
+Including this one. The receipt named above as the wrong-figures case reads,
+under RapidOCR: item **79.97**, tax **6.20**, total **$86.17**, tendered
+100.00, change 13.83. Both figures the old engines got wrong are right, and
+79.97 + 6.20 = 86.17 exactly.
+
+None of that is a reconciliation rate and it must not be read as one — the
+pipeline that decides which amount is the total was never built, because the
+earlier measurement said there was no point. But *"photographed receipts are
+out of reach"* was a conclusion about two engines, and it has been corrected —
 [docs/ocr-retest.md](https://github.com/Blahaj-gif/Crossfoot/blob/main/docs/ocr-retest.md).
 
 So **do not point a camera at this today.** Expensify, Dext and QuickBooks read
